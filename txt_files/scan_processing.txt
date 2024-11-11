@@ -1,0 +1,31 @@
+# scan_processing.py
+import socket
+from TCP_Socket import get_rplidar_scans, get_target_angles
+
+# Set up a single connection to the Raspberry Pi server
+raspberry_pi_ip = '172.20.10.3'  # Replace with your Raspberry Pi's IP address
+port = 8888
+
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client_socket.connect((raspberry_pi_ip, port))
+
+try:
+    # First scan request
+    print("Requesting 5 scans...")
+    scans = get_rplidar_scans(client_socket, 5)
+
+    # Process the target angles from the retrieved scans
+    target_scans = get_target_angles(scans)
+    print("Target Scans:", target_scans)
+
+    # Second scan request
+    scans = get_rplidar_scans(client_socket, 10)
+    print("Retrieved Scans:", scans)
+
+    target_scans = get_target_angles(scans)
+    print("Target Scans:", target_scans)
+
+finally:
+    # Close the connection after all requests and processing
+    #client_socket.close()
+    print("Connection closed.")
