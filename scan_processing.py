@@ -10,6 +10,9 @@ def get_latest_scans(server_ip, port, scan_limit):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect((server_ip, port))
     try:
+        # Send request type (1 for command)
+        client_socket.sendall((1).to_bytes(4, 'big'))
+        
         # Send the scan limit as a 4-byte integer
         client_socket.sendall(scan_limit.to_bytes(4, 'big'))
 
@@ -34,6 +37,7 @@ def get_latest_scans(server_ip, port, scan_limit):
         client_socket.close()
 
 
+
 def scan_rplidar(scan_limit=5):
     print(f"Requesting {scan_limit} scans...")
     scans = get_latest_scans(raspberry_pi_ip, port, scan_limit)
@@ -47,5 +51,33 @@ def scan_rplidar(scan_limit=5):
         print("Failed to get scan data.")
     return rpl_scans
 
-rpl = scan_rplidar(5)
+
+
+def send_command(server_ip, port, command):
+    """Sends a command to the Raspberry Pi."""
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect((server_ip, port))
+    try:
+        # Send request type (2 for command)
+        client_socket.sendall((2).to_bytes(4, 'big'))
+
+        # Encode the command and send its length
+        command_data = command.encode('utf-8')
+        cmd_length = len(command_data)
+        client_socket.sendall(cmd_length.to_bytes(4, 'big'))
+
+        # Send the command data
+        client_socket.sendall(command_data)
+    finally:
+        client_socket.close()
+
+
+# Send a command to the Raspberry Pi
+command = "w0:10"
+send_command(raspberry_pi_ip, port, command)
+
+# Read RPLiDAR Scans
+rpl = scan_rplidar()
+#sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = rpl    # Check robot sensors
 print(rpl)
+#print(sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr)

@@ -251,7 +251,7 @@ PORT_RX = 61201         # The port used by the *CLIENT* to send data
 
 ### Serial Setup ###
 BAUDRATE = 9600         # Baudrate in bps
-PORT_SERIAL = 'COM3'    # COM port identification
+PORT_SERIAL = 'COM7'    # COM port identification
 TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
 
 ### Packet Framing values ###
@@ -299,25 +299,21 @@ def handle_pygame_events():
 
 
 
-def localization(NUM_PARTICLES=2000):
-    
-    ############## Main section for the open loop control algorithm ##############
-    LOOP_PAUSE_TIME = 0.1 # seconds
-    # Main loop
-    RUNNING = True
-    
-    particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
+def localization(NUM_PARTICLES):
 
+    particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 7.7
-    diag_threshold = 7.7
+    threshold = 7.5
+    diag_threshold = 7.5
     NUM_STEPS = 555
+    # changing front and back sensors
+    #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = check_sensors()
     sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
     iteration = 0
     RESAMPLE_INTERVAL = 10
     convergence_condition = 0
     ess = 0
-    sigma = 12
+    sigma = 10
     j = 0
     
     try:
@@ -411,8 +407,8 @@ def localization(NUM_PARTICLES=2000):
             sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
             robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl]   # Robot sensors list
 
-            ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
-            HIGH_ESS = 0.65
+            #ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
+            #HIGH_ESS = 0.65
             
             #if ess > HIGH_ESS * NUM_PARTICLES:
             #    update_particle_weights(particles, robot_readings, sigma=4)  # Calculate particle weights
@@ -424,20 +420,19 @@ def localization(NUM_PARTICLES=2000):
                 j += 1
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
                 ess = calculate_ess(particles)
-                print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
+                #print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
                 particles = resample_particles(particles)   # Regenerate particles with weight
                 if j == 6:
                     convergence_condition = True
+                    print("Good Dawgy")
                 elif j == 4:
-                    sigma = 3
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
+                    sigma = 4
                 elif j == 3:
-                    sigma = 5
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
+                    sigma = 7
                     RESAMPLE_INTERVAL = 5
                     
-                    print(i)
+                #print(i)
 
 
             # Estimate robot position using top particles
@@ -462,15 +457,14 @@ def localization(NUM_PARTICLES=2000):
 
             if convergence_condition:
                 print(f"Normal Coords = [{ex},{ey},{etheta}]")
-                eposition = (ex, ey)
+                eposition = (ey, ex)
                 eorientation = etheta
 
                 # Save the top 50 particles
                 top_50_particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:50]
+                print(top_50_particles)
                 print("Top 50 particles saved for reinitialization.")
-                break
-            
-            
+                return eposition, eorientation, top_50_particles
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
@@ -481,6 +475,8 @@ def localization(NUM_PARTICLES=2000):
     finally:
         #pygame.quit()
         print("Localization complete.")
+
+
 
 
 ############## Navigation Code #############
@@ -688,11 +684,11 @@ def move_to_waypoint_with_localization(current_position, waypoint, maze, orienta
         pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle for estimated position
     pygame.display.flip()  # Update the full display
     
-    e_position = (ex, ey)
+    eposition = (ex, ey)
     eorientation = etheta
 
     # Check if within tolerance
-    error_x = abs(e_position[0] - waypoint[0])
+    error_x = abs(eposition[0] - waypoint[0])
     error_y = abs(eposition[1] - waypoint[1])
 
     if error_x <= tolerance and error_y <= tolerance:
@@ -700,7 +696,7 @@ def move_to_waypoint_with_localization(current_position, waypoint, maze, orienta
         current_position = waypoint  # Update position
     else:
         print(f"Rover did not reach the waypoint {waypoint} within tolerance.")
-        current_position = e_position
+        current_position = eposition
         orientation = eorientation
         return current_position, orientation, False
 
