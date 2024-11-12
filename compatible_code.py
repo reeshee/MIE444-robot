@@ -109,7 +109,7 @@ def navigate_to(maze, target_loading_zone, ser, max_retries=3, current_retry=0, 
 def move_to_waypoint_with_localization(current_position, waypoint, maze, ser, orientation):
     import time
     import math
-
+    ############
     tolerance = 1  # Tolerance in units (e.g., inches)
 
     # Calculate the direction vector to the waypoint
