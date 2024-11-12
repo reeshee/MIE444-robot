@@ -17,6 +17,7 @@ import time
 import math
 
 
+
 # Initialize Pygame for Particle Visualization
 pygame.init()
 canvas_width = int(CONFIG.maze_dim_x * CONFIG.ppi + 2 * CONFIG.border_pixels)

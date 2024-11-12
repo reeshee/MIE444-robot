@@ -336,8 +336,8 @@ def localization(NUM_PARTICLES=2000):
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 7.5
-    diag_threshold = 7.5
+    threshold = 7.7
+    diag_threshold = 7.7
     NUM_STEPS = 555
     sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
     iteration = 0
@@ -452,15 +452,17 @@ def localization(NUM_PARTICLES=2000):
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
                 ess = calculate_ess(particles)
                 print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
-                if ess < ESS_THRESHOLD:
-                    particles = resample_particles(particles)   # Regenerate particles with weight
-                    if j == 5:
-                        convergence_condition = True
-                    elif j == 4:
-                        sigma = 4
-                    elif j == 3:
-                        sigma = 8
-                        RESAMPLE_INTERVAL = 5
+                #if ess < ESS_THRESHOLD:
+                particles = resample_particles(particles)   # Regenerate particles with weight
+                if j == 6:
+                    convergence_condition = True
+                elif j == 4:
+                    sigma = 3
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
+                elif j == 3:
+                    sigma = 5
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
+                    RESAMPLE_INTERVAL = 5
                     
                     print(i)
 
@@ -492,6 +494,7 @@ def localization(NUM_PARTICLES=2000):
 
                 # Save the top 50 particles
                 top_50_particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:50]
+                print(top_50_particles)
                 print("Top 50 particles saved for reinitialization.")
                 break
             
