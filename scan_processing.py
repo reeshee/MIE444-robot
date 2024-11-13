@@ -2,7 +2,8 @@ import socket
 import pickle
 from TCP_Socket import get_target_angles
 
-raspberry_pi_ip = '172.20.10.3'  # Replace with your Raspberry Pi's IP address
+raspberry_pi_ip = '172.20.10.3'     # Raspberry Pi's IP address when connected to Baqir's iPhone hotspot
+#raspberry_pi_ip = '100.67.157.87'  # Raspberry Pi's IP address when connected to UofT wifi
 port = 8888
 
 def get_latest_scans(server_ip, port, scan_limit):
@@ -73,8 +74,8 @@ def send_command(server_ip, port, command):
 
 
 # Send a command to the Raspberry Pi
-command = "w0:10"
-send_command(raspberry_pi_ip, port, command)
+#command = "w0:10"
+#send_command(raspberry_pi_ip, port, command)
 
 # Read RPLiDAR Scans
 rpl = scan_rplidar()

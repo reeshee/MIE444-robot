@@ -49,7 +49,7 @@ PORT_RX = 61201         # The port used by the *CLIENT* to send data
 
 ### Serial Setup ###
 BAUDRATE = 9600         # Baudrate in bps
-PORT_SERIAL = 'COM3'    # COM port identification
+PORT_SERIAL = 'COM7'    # COM port identification
 TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
 
 ### Packet Framing values ###
@@ -326,17 +326,16 @@ def handle_pygame_events():
             RUNNING = False
 
 
-def localization(NUM_PARTICLES=2000):
+def localization(ser, NUM_PARTICLES=2000):
     
     ############## Main section for the open loop control algorithm ##############
-    LOOP_PAUSE_TIME = 0.1 # seconds
+    LOOP_PAUSE_TIME = 1 # seconds
     # Main loop
     RUNNING = True
     
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    
     threshold = 7.7
     diag_threshold = 7.7
     NUM_STEPS = 786
@@ -348,10 +347,35 @@ def localization(NUM_PARTICLES=2000):
     j = 0
     
     robot_readings = scan_rplidar()
-    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = robot_readings  # Check robot sensors
-
+    #print(f"robot_readings{robot_readings}")
+    #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = robot_readings
+    
+    
+    sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
+    # Need to change the following:
+    # 1. 0 Deg: sensor_front STAYS
+    # 2. 30 Deg: sensor_right change to sensor_frontr
+    # 3. 90 Deg: sensor_left change to sensor_right
+    # 4. 150 Deg: sensor_back change to sensor_backr
+    # 5. 180 Deg: sensor_frontl change to sensor_back
+    # 6. 210 Deg: sensor_frontr change to sensor_backl
+    # 7. 270 Deg: sensor_left change to sensor_backl
+    # 8. 330 Deg: sensor_backr change to sensor_frontl
+    ####### If we also want to account for the fact that the lidar is rotated 180 degrees, then these values at the angles should be:
+    #------------------------------#
+    #1. 0 Deg = sensor_back
+    #2. 30 Deg = sensor_backl
+    #3. 90 deg = sensor_left
+    #4. 150 Deg = sensor_frontl
+    #5. 180 Deg = sensor_front
+    #6. 210 Deg = sensor_frontr
+    #7. 270 Deg = sensor_right
+    #8. 330 Deg = sensor_backr
+    # -----------------------------#
     try:
         for i in range(NUM_STEPS):
+            print("Loop starts")
+            print(f"robot_readings{robot_readings}")
             # Handle Pygame events
             handle_pygame_events()
             if not RUNNING:
@@ -360,16 +384,17 @@ def localization(NUM_PARTICLES=2000):
             # Pause to control command rate
             time.sleep(LOOP_PAUSE_TIME)
             iteration += 1
-
+            
             # Handle movement commands based on sensor readings
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
+                print("move forward")
                 # Send a drive forward command
                 ser.write(b'obs_moveForward\n')
-                time.sleep(LOOP_PAUSE_TIME)
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             elif sensor_left > sensor_right and sensor_left > sensor_front:
+                #print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
                 ser.write(b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
@@ -378,6 +403,7 @@ def localization(NUM_PARTICLES=2000):
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_left > sensor_right and sensor_left < sensor_front:
+                print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
                 ser.write(b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
@@ -386,6 +412,7 @@ def localization(NUM_PARTICLES=2000):
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_right > sensor_left and sensor_right > sensor_front:
+                print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
                 ser.write(b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
@@ -394,6 +421,7 @@ def localization(NUM_PARTICLES=2000):
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             elif sensor_right > sensor_left and sensor_right < sensor_front:
+                print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
                 ser.write(b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
@@ -402,13 +430,15 @@ def localization(NUM_PARTICLES=2000):
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             else:
+                print("move forward 2")
                 # Send a drive forward command
                 ser.write(b'obs_moveForward\n')
-                time.sleep(LOOP_PAUSE_TIME)
+                [responses, time_rx] = receive()
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
-
+            time.sleep(LOOP_PAUSE_TIME)
+            
             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                 if sensor_left > sensor_right:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
@@ -425,14 +455,14 @@ def localization(NUM_PARTICLES=2000):
                         sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn right command
-                            ser.write(b'obs_smallrotateRight\n')
+                            ser.write(b'obs_rotateRight\n')
                             time.sleep(LOOP_PAUSE_TIME)
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=18)
 
             # Check robot sensors
             robot_readings = scan_rplidar()
-            sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = robot_readings  # Check robot sensors
+            sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
 
             ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
             HIGH_ESS = 0.65
@@ -460,7 +490,7 @@ def localization(NUM_PARTICLES=2000):
                     particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
                     RESAMPLE_INTERVAL = 5
                     
-                    print(i)
+                    print("Loop Iteration: ", i)
 
 
             # Estimate robot position using top particles
@@ -504,5 +534,9 @@ def localization(NUM_PARTICLES=2000):
     finally:
         #pygame.quit()
         print("Localization complete.")
-        
-localization()
+
+
+
+ser = serial.Serial('COM7', 9600, timeout=1)
+localization(ser)
+ser.close()

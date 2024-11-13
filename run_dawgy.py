@@ -17,7 +17,6 @@ import time
 import math
 
 
-
 # Initialize Pygame for Particle Visualization
 pygame.init()
 canvas_width = int(CONFIG.maze_dim_x * CONFIG.ppi + 2 * CONFIG.border_pixels)
@@ -300,19 +299,25 @@ def handle_pygame_events():
 
 
 
-def localization(NUM_PARTICLES):
-
+def localization(NUM_PARTICLES=2000):
+    
+    ############## Main section for the open loop control algorithm ##############
+    LOOP_PAUSE_TIME = 0.1 # seconds
+    # Main loop
+    RUNNING = True
+    
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
+
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 7.5
-    diag_threshold = 7.5
+    threshold = 7.7
+    diag_threshold = 7.7
     NUM_STEPS = 555
     sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
     iteration = 0
     RESAMPLE_INTERVAL = 10
     convergence_condition = 0
     ess = 0
-    sigma = 10
+    sigma = 12
     j = 0
     
     try:
@@ -406,8 +411,8 @@ def localization(NUM_PARTICLES):
             sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
             robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl]   # Robot sensors list
 
-            #ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
-            #HIGH_ESS = 0.65
+            ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
+            HIGH_ESS = 0.65
             
             #if ess > HIGH_ESS * NUM_PARTICLES:
             #    update_particle_weights(particles, robot_readings, sigma=4)  # Calculate particle weights
@@ -419,19 +424,20 @@ def localization(NUM_PARTICLES):
                 j += 1
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
                 ess = calculate_ess(particles)
-                #print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
+                print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
                 particles = resample_particles(particles)   # Regenerate particles with weight
                 if j == 6:
                     convergence_condition = True
-                    print("Good Dawgy")
                 elif j == 4:
-                    sigma = 4
+                    sigma = 3
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
                 elif j == 3:
-                    sigma = 7
+                    sigma = 5
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
                     RESAMPLE_INTERVAL = 5
                     
-                #print(i)
+                    print(i)
 
 
             # Estimate robot position using top particles
@@ -461,8 +467,12 @@ def localization(NUM_PARTICLES):
 
                 # Save the top 50 particles
                 top_50_particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:50]
+                print(top_50_particles)
                 print("Top 50 particles saved for reinitialization.")
+                
                 return eposition, eorientation, top_50_particles
+            
+            
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
@@ -475,8 +485,6 @@ def localization(NUM_PARTICLES):
         print("Localization complete.")
 
 
-
-
 ############## Navigation Code #############
 ### includes helper functions where the parent function is navigate to
 ### will be used twice, one to get to loading zone, and once again to reach one of the drop off zones
@@ -487,18 +495,16 @@ def heuristic(a, b):
 
 # A* Search Algorithm
 def a_star_search(maze, start, goal):
+    print("we here")
     rows, cols = len(maze), len(maze[0]) # iterate through all possible direction nodes
     directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Define the directions of the nodes to consider
     open_set = [] # set empty array open_set to store location of these nodes
-    #start = int(start[0]), int(start[1])
-    print(start)
     heapq.heappush(open_set, (0, start)) # defines the first node as the start position form the localization
     path_history = {} # stores the previous steps
     # Next g_score and f_score are defined which are crucial for the A* search algorithm to work successfully
     # algorithm uses g_score to see if a node is lower cost compared to the saved, if it is, g_score is reupdated
     # f_score is used to determine the priority of the nodes in the open set, the lower
     # the f_score, the higher the priority of the node in the open set
-
     g_score = {start: 0} # defines the initial point 0 as the start point 
     f_score = {start: heuristic(start, goal)} # represents estimated total cost if a specific node is chosen
     #max_iterations = 1000
@@ -507,6 +513,7 @@ def a_star_search(maze, start, goal):
     while open_set: # and iteration_count < max_iterations:
         iteration_count += 1
         current_cost, current = heapq.heappop(open_set)
+
         #print(f"Iteration: {iteration_count}, Current node: {current}, Cost: {current_cost}")
 
         if current == goal:
@@ -519,20 +526,22 @@ def a_star_search(maze, start, goal):
             return (path)
 
         for dx, dy in directions:
-            neighbor = (int(current[0] + dx), int(current[1] + dy))
+            neighbor = (int(current[0]) + dx, int(current[1]) + dy)
+            #print(f"Evaluating neighbor: {neighbor}")
 
             if 0 <= neighbor[0] < rows and 0 <= neighbor[1] < cols and maze[neighbor[0]][neighbor[1]] != 0:
                 if not is_valid_position_for_rover(maze, neighbor): 
+                    #print(f"Neighbor {neighbor} is not valid due to clearance.")
                     continue
 
-            tentative_g_score = g_score[current] + 1
-            if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                path_history[neighbor] = current
-                g_score[neighbor] = tentative_g_score
-                f_score[neighbor] = tentative_g_score + heuristic(neighbor, goal)
-                heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                tentative_g_score = g_score[current] + 1
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    path_history[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = tentative_g_score + heuristic(neighbor, goal)
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
                     #print(f"Neighbor {neighbor} added to open set with f_score: {f_score[neighbor]}, heuristic: {heuristic(neighbor, goal)}")
-    #print (iteration_count)
+    print (iteration_count)
     print("No path found.")
     return float('inf')
 
@@ -543,8 +552,8 @@ def is_valid_position_for_rover(maze, position):
     cx, cy = position
 
     # Iterate over a square area around the position to ensure no walls are within 5 inches
-    for dx in range(-5, 5):
-        for dy in range(-5, 5):
+    for dx in range(-4, 4):
+        for dy in range(-4, 4):
             nx, ny = cx + dx, cy + dy
             # Check if the position is out of bounds
             if not (0 <= nx < rows and 0 <= ny < cols):
@@ -555,7 +564,7 @@ def is_valid_position_for_rover(maze, position):
     
     return True
 
-def navigate_to(maze, target_loading_zone, est_position, est_orientation, top_50_particles, max_retries=3, current_retry=0, orientation=0):
+def navigate_to(maze, position, est_position, est_orientation, top_50_particles, max_retries=3, current_retry=0, orientation=0):
     
     #est_position, est_orientation, top_50_particles = localization()### localization function
     
@@ -566,18 +575,21 @@ def navigate_to(maze, target_loading_zone, est_position, est_orientation, top_50
     # if current_retry >= max_retries:
     #     print("Maximum retries reached. Navigation aborted.")
     #     return current_position  # Abort navigation after too many retries
-    adjust_rover_orientation(est_orientation, top_50_particles) # sets orientation to 0 with respect to East
+    
     # Use A* to find the best path to the target loading zone
-    path_points = a_star_search(maze, est_position, target_loading_zone)
-
-    if target_loading_zone is None:
+    path_points = a_star_search(maze, est_position, position)
+    #adjust_rover_orientation(est_orientation, top_50_particles) # sets orientation to 0 with respect to East
+    
+    
+    if position is None:
         print("No valid loading zone to navigate to.")
         return est_position  # No valid path found, return current position
 
-    print(f"Navigating from {est_position} to Target Zone {target_loading_zone} with path points: {path_points}")
+    print(f"Navigating from {est_position} to Target Zone {position} with path points: {path_points}")
     
+    print(position)
 
-    while est_position != target_loading_zone:
+    while abs(est_position[0] - position[0]) >= 0.3 or abs(est_position[1] - position[1]) >= 0.3:
     # Iterate through each path point using the helper function
         for point in path_points:
             est_position, est_orientation, boolean = move_to_waypoint_with_localization(est_position, point, maze, est_orientation, top_50_particles)
@@ -588,7 +600,7 @@ def navigate_to(maze, target_loading_zone, est_position, est_orientation, top_50
                 print("Out of tolerance boundary, recalculating path.")
                 adjust_rover_orientation(orientation,top_50_particles)
                 orientation = 0
-                path_points = a_star_search(maze, est_position, target_loading_zone)
+                path_points = a_star_search(maze, est_position, position)
                 print(path_points)
                 break
 
@@ -596,7 +608,7 @@ def navigate_to(maze, target_loading_zone, est_position, est_orientation, top_50
 
 
 def move_to_waypoint_with_localization(current_position, waypoint, maze, orientation, top_50_particles):
-    CMD_LIST = ['r0:90', 'r0:-90', 'w0:1']
+    CMD_LIST = ['r0:50', 'r0:-50', 'w0:1']
     
     # Update the display
     canvas.fill(CONFIG.background_color) # Clear screen
@@ -618,24 +630,22 @@ def move_to_waypoint_with_localization(current_position, waypoint, maze, orienta
         angle_difference -= 360  # Choose the shortest rotation
 
     # Determine turning direction and execute turn
-    if angle_difference > 0:
+    if angle_difference > 45:
         transmit(packetize(CMD_LIST[0]))
         time.sleep(LOOP_PAUSE_TIME)
         [responses, time_rx] = receive()
-        #ser.write(b'rotate_right\n')
         print(f"Command: rotate_right by {angle_difference} degrees")
         rotation_changer = 90
         # Update orientation
-        orientation = (orientation + angle_difference) % 360
-    elif angle_difference < 0:
+        orientation = (orientation + rotation_changer) % 360
+    elif angle_difference < -45:
         transmit(packetize(CMD_LIST[1]))
         time.sleep(LOOP_PAUSE_TIME)
         [responses, time_rx] = receive()
-        #ser.write(b'rotate_left\n')
         print(f"Command: rotate_left by {-angle_difference} degrees")
-        # Update orientation
         rotation_changer = -90
-        orientation = (orientation + angle_difference) % 360
+        # Update orientation
+        orientation = (orientation + rotation_changer) % 360
     else:
         print("No rotation needed.")
 
@@ -667,9 +677,6 @@ def move_to_waypoint_with_localization(current_position, waypoint, maze, orienta
     resample_particles(top_50_particles)
     #print("resample",top_50_particles)
     time.sleep(0.4)
-    
-    
-    print("HERE",estimate_robot_position(top_50_particles))
     estimated_position = estimate_robot_position(top_50_particles)
     
     # Convert to screen coordinates
@@ -683,20 +690,20 @@ def move_to_waypoint_with_localization(current_position, waypoint, maze, orienta
         pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle for estimated position
     pygame.display.flip()  # Update the full display
     
-    eposition = (ex, ey)
+    e_position = (ex, ey)
     eorientation = etheta
-    
-    localized_position, orientation = eposition, eorientation   ########
 
     # Check if within tolerance
-    error_x = abs(localized_position[0] - waypoint[0])
-    error_y = abs(localized_position[1] - waypoint[1])
+    error_x = abs(e_position[0] - waypoint[0])
+    error_y = abs(eposition[1] - waypoint[1])
 
     if error_x <= tolerance and error_y <= tolerance:
         print(f"Rover reached the waypoint {waypoint} within tolerance.")
-        current_position = localized_position  # Update position
+        current_position = waypoint  # Update position
     else:
         print(f"Rover did not reach the waypoint {waypoint} within tolerance.")
+        current_position = e_position
+        orientation = eorientation
         return current_position, orientation, False
 
     return current_position, orientation, True
@@ -705,27 +712,29 @@ def adjust_rover_orientation(lidar_angle, top_50_particles):     #REDOOOOO!!!!!!
 
     # Round the LIDAR angle to the nearest integer
     lidar_angle_int = int(round(lidar_angle))
-
+    print(lidar_angle_int)
     # Convert LIDAR angle (north=0°) to rover coordinate system (east=0°)
     # Mapping: code_angle = (450 - lidar_angle) % 360
     code_angle = (lidar_angle_int) % 360
-
+    print(code_angle)
     # Desired orientation is 0 degrees (east)
     desired_orientation = 0
 
     # Calculate minimal angle difference to get to desired orientation
     angle_to_rotate = code_angle
+    print(angle_to_rotate)
 
 
     # Determine rotation direction and prepare command
-    if angle_to_rotate > desired_orientation:
+    if angle_to_rotate > desired_orientation or angle_to_rotate > desired_orientation:
         # Send reverse command
         time.sleep(LOOP_PAUSE_TIME)
         transmit(packetize(f'r0:{angle_to_rotate}'))
         [responses, time_rx] = receive()
         # Move particles
         move_particles(top_50_particles, move_distance=0, rotation_change=angle_to_rotate)
-        
+        print(f"rotated by{angle_to_rotate}")
+        time.sleep(LOOP_PAUSE_TIME)
         #command = f'adjust{abs(int(angle_to_rotate))}\n'  r0:anglerotate
         #ser.write(command.encode())
         #print(f"Sending command: {command.strip()}")
@@ -806,13 +815,15 @@ for row in walls:
 maze2 = [[1 if cell != 0 else 0 for cell in row] for row in expanded_maze]
 
 loading_zones = [
-    (8, 66),  # Loading bay 1 is at the 5th square, row 1
-    (8,90),   # Loading bay 2 is at 7th square, row 1
-    (32, 30), # Loading bay 3 is at 3rd square, row 3
-    (40, 90)  # Loading bay 4 is at 7th square row 4
+    (8.0, 66.0),  # Loading bay 1 is at the 5th square, row 1
+    (8.0,90.0),   # Loading bay 2 is at 7th square, row 1
+    (32.0, 30.0), # Loading bay 3 is at 3rd square, row 3
+    (40.0, 90,0)  # Loading bay 4 is at 7th square row 4
 ]
 target_loading_zone = 2
-position_1 = (6,6)
+x_e = 6.0
+y_e = 6.0
+position_1 = (x_e,y_e)
 position_2 = loading_zones [target_loading_zone]
 
 load_zone = navigate_to(maze2, position_1, eposition, eorientation, top_50_particles)
