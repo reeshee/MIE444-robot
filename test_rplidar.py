@@ -336,8 +336,8 @@ def localization(ser, NUM_PARTICLES=2000):
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 10
-    diag_threshold = 10
+    threshold = 7.5*25.4
+    diag_threshold = 7.5*25.4
     NUM_STEPS = 786
     RESAMPLE_INTERVAL = 10
     iteration = 0
@@ -351,7 +351,7 @@ def localization(ser, NUM_PARTICLES=2000):
     
     #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = robot_readings
     sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
-    sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = robot_readings
+    #sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = robot_readings
 
     # Need to change the following:
     # 1. 0 Deg: sensor_front STAYS
@@ -443,7 +443,8 @@ def localization(ser, NUM_PARTICLES=2000):
             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                 if sensor_left > sensor_right:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-                        sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+                        robot_readings = scan_rplidar()
+                        sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn left command
                             ser.write(b'obs_rotateLeft\n')
@@ -453,7 +454,8 @@ def localization(ser, NUM_PARTICLES=2000):
 
                 elif sensor_right > sensor_left:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-                        sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+                        robot_readings = scan_rplidar()
+                        sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn right command
                             ser.write(b'obs_rotateRight\n')
