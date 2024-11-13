@@ -49,7 +49,7 @@ PORT_RX = 61201         # The port used by the *CLIENT* to send data
 
 ### Serial Setup ###
 BAUDRATE = 9600         # Baudrate in bps
-PORT_SERIAL = 'COM7'    # COM port identification
+PORT_SERIAL = 'COM3'    # COM port identification
 TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
 
 ### Packet Framing values ###
@@ -336,8 +336,8 @@ def localization(ser, NUM_PARTICLES=2000):
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 7.7
-    diag_threshold = 7.7
+    threshold = 10
+    diag_threshold = 10
     NUM_STEPS = 786
     RESAMPLE_INTERVAL = 10
     iteration = 0
@@ -348,10 +348,11 @@ def localization(ser, NUM_PARTICLES=2000):
     
     robot_readings = scan_rplidar()
     #print(f"robot_readings{robot_readings}")
+    
     #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = robot_readings
-    
-    
     sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
+    sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = robot_readings
+
     # Need to change the following:
     # 1. 0 Deg: sensor_front STAYS
     # 2. 30 Deg: sensor_right change to sensor_frontr
@@ -537,6 +538,6 @@ def localization(ser, NUM_PARTICLES=2000):
 
 
 
-ser = serial.Serial('COM7', 9600, timeout=1)
+ser = serial.Serial('COM3', 9600, timeout=1)
 localization(ser)
 ser.close()
