@@ -69,97 +69,30 @@ def move_particles(particles, move_distance, rotation_change):
 
 
 
-def get_particle_readings(particle, angles=[0, 30, 90, 150, 180, 210, 270, 330]):
-    """Simulate sensor-like readings by measuring distances to walls at specific angles."""
-    readings = []
-    
-    # Check if the particle is within the maze bounds
-    if not (0 <= particle.x <= CONFIG.maze_dim_x and 0 <= particle.y <= CONFIG.maze_dim_y):
-        # If out of bounds, return maximum possible distance readings
-        max_distance = 1000  # A large value to represent "no walls detected"
-        #print(f"Particle at ({particle.x:.2f}, {particle.y:.2f}) is out of bounds. Readings: {[max_distance] * len(angles)}")
-        return [max_distance] * len(angles)
+def get_particle_readings(particles, angles=[0, 30, 90, 150, 180, 210, 270, 330]):
+    """Simulate sensor-like readings by measuring distances to walls at specific angles for all particles."""
+    num_particles = len(particles)
+    num_angles = len(angles)
 
-    # Print particle position and orientation
-    #print(f"\nParticle at ({particle.x:.2f}, {particle.y:.2f}) with orientation θ={particle.theta:.2f}°")
-    #print("Sensing distances at angles:", angles)
+    # Preallocate readings array (num_particles, num_angles)
+    readings = np.zeros((num_particles, num_angles))
 
-    # If within bounds, proceed with normal wall distance measurements
-    for angle in angles:
-        # Calculate the absolute direction for each angle
-        direction = (particle.theta + angle) % 360
-        # Get the distance to the nearest wall in that direction
-        distance = maze.get_distance_to_wall(particle.x, particle.y, direction)
-        readings.append(distance)
-        #print(f"  Angle {angle}°: Distance to wall = {distance:.2f}")
+    for i, particle in enumerate(particles):
+        if not (0 <= particle.x <= CONFIG.maze_dim_x and 0 <= particle.y <= CONFIG.maze_dim_y):
+            # If out of bounds, set readings to max distance
+            readings[i, :] = 1000
+        else:
+            # Calculate readings for each angle
+            for j, angle in enumerate(angles):
+                direction = (particle.theta + angle) % 360
+                distance = maze.get_distance_to_wall(particle.x, particle.y, direction)
+                readings[i, j] = distance
 
     return readings
 
 
-# def update_particle_weights(particles, robot_readings, sigma=12):
-#     """Updates particle weights based on similarity to robot readings using a Gaussian model.
-    
-#     Args:
-#         particles (list of Particle): The particles to update.
-#         robot_readings (list of float): The sensor readings from the robot.
-#         sigma (float): Standard deviation for Gaussian, representing expected sensor noise.
-#     """
-#     sigma_squared = sigma ** 2
-#     gaussian_denom = 2 * sigma_squared
-#     total_weight = 0.0  # Initialize total weight for normalization
 
-#     #print("\n--- Weight Computation for Each Particle ---")
-#     for i, particle in enumerate(particles):
-#         particle_readings = get_particle_readings(particle)
-#         weight = 1.0  # Initialize particle weight
-
-#         # Calculate weight by comparing each sensor reading
-#         for j, (r_reading, p_reading) in enumerate(zip(robot_readings, particle_readings)):
-#             if r_reading == 1000 or p_reading == 1000:
-#                 # If either reading is "max distance" (indicating no wall), give a low likelihood
-#                 likelihood = 0.05  # Slightly lowered flat likelihood to further reduce weight for mismatched particles
-#             else:
-#                 diff = r_reading - p_reading
-#                 likelihood = np.exp(-diff ** 2 / gaussian_denom)
-#             weight *= likelihood
-
-#             # Debugging: Log individual sensor likelihoods for this particle
-#             #print(f"  Sensor {j+1}: Robot = {r_reading}, Particle = {p_reading}, Likelihood = {likelihood:.5f}")
-
-#         particle.weight = weight
-#         total_weight += weight
-        
-#         # Print the particle with the maximum non-normalized weight
-#         max_non_normalized_particle = max(particles, key=lambda p: p.weight)
-#     print(f"\nMax non-normalized weight particle: Position=({max_non_normalized_particle.x:.2f}, {max_non_normalized_particle.y:.2f}), "
-#     f"Weight={max_non_normalized_particle.weight:.5e}")
-        
-#         # Debugging: Log particle weight
-#         #print(f"Particle {i+1} | Pos: ({particle.x:.2f}, {particle.y:.2f}) | Weight (unnormalized): {particle.weight:.5e}")
-#     # Normalize weights so they sum to 1
-#     if total_weight > 0:
-#         for particle in particles:
-#             particle.weight /= total_weight
-#             # Debugging: Print normalized weights for each particle
-#             #print(f"Normalized weight for particle ({particle.x:.2f}, {particle.y:.2f}): {particle.weight:.4f}")
-#     else:
-#         # Edge case: Equalize weights if all are zero
-#         #print("Warning: All particle weights are zero, setting uniform weights.")
-#         for particle in particles:
-#             particle.weight = 1.0 / len(particles)
-
-#     # Check particle weight distribution
-#     max_weight_particle = max(particles, key=lambda p: p.weight)
-#     #print(f"\nMax weight particle: Position=({max_weight_particle.x:.2f}, {max_weight_particle.y:.2f}), "
-#     #      f"Weight={max_weight_particle.weight:.5e}")
-
-#     # Convergence Summary
-#     average_x = np.sum([p.x * p.weight for p in particles])
-#     average_y = np.sum([p.y * p.weight for p in particles])
-#     #print(f"\n--- Convergence Summary ---")
-#     #print(f"Weighted average particle position: ({average_x:.2f}, {average_y:.2f})")
-
-def update_particle_weights(particles, robot_readings, sigma=10):
+def update_particle_weights(particles, robot_readings, sigma=5):
     """Updates particle weights based on similarity to robot readings using a Gaussian model.
     
     Args:
@@ -171,15 +104,10 @@ def update_particle_weights(particles, robot_readings, sigma=10):
     sigma_squared = sigma ** 2
     gaussian_denom = 2 * sigma_squared
 
-    # Extract particle positions and orientations into arrays for vectorization
-    particle_x = np.array([p.x for p in particles])
-    particle_y = np.array([p.y for p in particles])
-    particle_theta = np.array([p.theta for p in particles])
-
     # Get particle readings for all particles
-    particle_readings = np.array([get_particle_readings(p, angles=[0, 30, 90, 150, 180, 210, 270, 330]) for p in particles])
+    particle_readings = get_particle_readings(particles, angles=[0, 30, 90, 150, 180, 210, 270, 330])
 
-    # Convert robot readings to a NumPy array for vector operations
+    # Convert robot readings to a numpy array for vector operations
     robot_readings = np.array(robot_readings)
 
     # Calculate the differences between particle readings and robot readings
@@ -187,10 +115,10 @@ def update_particle_weights(particles, robot_readings, sigma=10):
 
     # Calculate the likelihoods using a Gaussian model
     likelihoods = np.exp(-differences ** 2 / gaussian_denom)  # Apply Gaussian model element-wise
-
+    print("LIKELIHOODS: ", likelihoods)
     # Compute the final weight for each particle by multiplying over the angles
     weights = np.prod(likelihoods, axis=1)
-
+    print("WEIGHTS: ", weights)
     # Normalize the weights so they sum to 1
     total_weight = np.sum(weights)
     if total_weight > 0:
@@ -202,6 +130,10 @@ def update_particle_weights(particles, robot_readings, sigma=10):
     # Assign back the computed weights to particles
     for i, particle in enumerate(particles):
         particle.weight = weights[i]
+
+    # Print statements for debugging
+    #print("Computed particle weights:", weights)
+
 
 
 def resample_particles(particles, min_variance=0.1, max_variance=2.0):
@@ -266,26 +198,17 @@ def calculate_ess(particles):
 
 
 
-# def estimate_robot_position(particles, weight_threshold=0.4):
-#     # Select particles above the specified weight threshold
-#     high_weight_particles = [p for p in particles if p.weight > weight_threshold]
-
-#     # If no particles are above the threshold, return None
-#     if len(high_weight_particles) == 0:
-#         return None
-
-#     # Calculate the weighted average of the high-weight particles
-#     sum_weights = sum(p.weight for p in high_weight_particles)
-#     average_x = sum(p.x * p.weight for p in high_weight_particles) / sum_weights
-#     average_y = sum(p.y * p.weight for p in high_weight_particles) / sum_weights
-
-#     return average_x, average_y
-import numpy as np
-
 def estimate_robot_position(particles, weight_threshold=0.5):
     # Select particles above the specified weight threshold
-    high_weight_particles = [p for p in particles if p.weight > weight_threshold]
 
+    if len(particles) == 50:
+        weight_threshold = 0
+        high_weight_particles = [p for p in particles if p.weight > weight_threshold]
+
+    else:
+        high_weight_particles = [p for p in particles if p.weight > weight_threshold]
+    
+    
     # If no particles are above the threshold, return None
     if len(high_weight_particles) == 0:
         return None
@@ -299,40 +222,6 @@ def estimate_robot_position(particles, weight_threshold=0.5):
     sin_sum = sum(np.sin(np.radians(p.theta)) * p.weight for p in high_weight_particles)
     cos_sum = sum(np.cos(np.radians(p.theta)) * p.weight for p in high_weight_particles)
     average_theta = np.degrees(np.arctan2(sin_sum, cos_sum)) % 360
-    print("THERE",average_x, average_y, average_theta)
+
+    #print("THERE",average_x, average_y, average_theta)
     return average_x, average_y, average_theta
-
-
-# def reinitialize_particles_with_top(top_particles, num_particles, position_variance=2.0, angle_variance=10.0):
-#     """
-#     Reinitialize particles using top particles, adding some variance for diversity.
-    
-#     Args:
-#         top_particles (list of Particle): The top particles to base reinitialization on.
-#         num_particles (int): Total number of particles to use for reinitialization.
-#         position_variance (float): Standard deviation for adding variance to position.
-#         angle_variance (float): Standard deviation for adding variance to orientation.
-        
-#     Returns:
-#         list of Particle: A list of reinitialized particles.
-#     """
-#     reinitialized_particles = []
-
-#     # Add the top particles with some variance
-#     for particle in top_particles:
-#         for _ in range(num_particles // len(top_particles)):
-#             new_x = particle.x + np.random.normal(0, position_variance)
-#             new_y = particle.y + np.random.normal(0, position_variance)
-#             new_theta = (particle.theta + np.random.normal(0, angle_variance)) % 360
-#             reinitialized_particles.append(Particle(new_x, new_y, new_theta))
-
-#     # If needed, add extra particles to reach num_particles
-#     #while len(reinitialized_particles) < num_particles:
-#     #    base_particle = top_particles[np.random.randint(0, len(top_particles))]
-#     #    new_x = base_particle.x + np.random.normal(0, position_variance)
-#     #    new_y = base_particle.y + np.random.normal(0, position_variance)
-#     #    new_theta = (base_particle.theta + np.random.normal(0, angle_variance)) % 360
-#     #    reinitialized_particles.append(Particle(new_x, new_y, new_theta))
-
-#     return reinitialized_particles[:num_particles]
-

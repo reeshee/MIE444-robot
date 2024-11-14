@@ -2,8 +2,8 @@ import socket
 import pickle
 from TCP_Socket import get_target_angles
 
-raspberry_pi_ip = '172.20.10.3'     # Raspberry Pi's IP address when connected to Baqir's iPhone hotspot
-#raspberry_pi_ip = '100.67.157.87'  # Raspberry Pi's IP address when connected to UofT wifi
+#raspberry_pi_ip = '172.20.10.3'     # Raspberry Pi's IP address when connected to Baqir's iPhone hotspot
+raspberry_pi_ip = '100.67.145.12'  # Raspberry Pi's IP address when connected to UofT wifi
 port = 8888
 
 def get_latest_scans(server_ip, port, scan_limit):
@@ -45,7 +45,7 @@ def scan_rplidar(scan_limit=5):
     if scans:
         # Process the target angles from the retrieved scans
         target_scans = get_target_angles(scans)
-        print("Averaged Target Scans:", target_scans)
+        #print("Averaged Target Scans:", target_scans)
         rpl_scans = [*target_scans.values()]
         #print(rpl_scans)
     else:

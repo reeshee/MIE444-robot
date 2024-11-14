@@ -49,7 +49,7 @@ PORT_RX = 61201         # The port used by the *CLIENT* to send data
 
 ### Serial Setup ###
 BAUDRATE = 9600         # Baudrate in bps
-PORT_SERIAL = 'COM7'    # COM port identification
+PORT_SERIAL = 'COM3'    # COM port identification
 TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
 
 ### Packet Framing values ###
@@ -336,8 +336,8 @@ def localization(ser, NUM_PARTICLES=2000):
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 7.7
-    diag_threshold = 7.7
+    threshold = 7.5*25.4
+    diag_threshold = 7.5*25.4
     NUM_STEPS = 786
     RESAMPLE_INTERVAL = 10
     iteration = 0
@@ -348,11 +348,11 @@ def localization(ser, NUM_PARTICLES=2000):
     
     robot_readings = scan_rplidar()
     #print(f"robot_readings{robot_readings}")
+    
     #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = robot_readings
-    
-    
-    #sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
-    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+    sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
+    #sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = robot_readings
+
     # Need to change the following:
     # 1. 0 Deg: sensor_front STAYS
     # 2. 30 Deg: sensor_right change to sensor_frontr
@@ -384,99 +384,82 @@ def localization(ser, NUM_PARTICLES=2000):
 
             # Pause to control command rate
             time.sleep(LOOP_PAUSE_TIME)
-            iteration += 1
+            
             
             # Handle movement commands based on sensor readings
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
                 print("move forward")
                 # Send a drive forward command
-                #ser.write(b'obs_moveForward\n')
-                transmit(packetize(CMD_LIST[0]))
+                ser.write(b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             elif sensor_left > sensor_right and sensor_left > sensor_front:
                 #print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                #ser.write(b'obs_smallrotateLeft\n')
-                #time.sleep(LOOP_PAUSE_TIME)
-                #ser.write(b'obs_moveForward\n')
-                transmit(packetize(CMD_LIST[1]))
+                ser.write(b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
+                ser.write(b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_left > sensor_right and sensor_left < sensor_front:
                 print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                #ser.write(b'obs_smallrotateLeft\n')
-                #time.sleep(LOOP_PAUSE_TIME)
-                #ser.write(b'obs_moveForward\n')
-                transmit(packetize(CMD_LIST[1]))
+                ser.write(b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
+                ser.write(b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_right > sensor_left and sensor_right > sensor_front:
                 print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                # ser.write(b'obs_smallrotateRight\n')
-                # time.sleep(LOOP_PAUSE_TIME)
-                # ser.write(b'obs_moveForward\n')
-                transmit(packetize(CMD_LIST[2]))
+                ser.write(b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
+                ser.write(b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             elif sensor_right > sensor_left and sensor_right < sensor_front:
                 print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                # ser.write(b'obs_smallrotateRight\n')
-                # time.sleep(LOOP_PAUSE_TIME)
-                # ser.write(b'obs_moveForward\n')
-                transmit(packetize(CMD_LIST[2]))
+                ser.write(b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
+                ser.write(b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             else:
                 print("move forward 2")
                 # Send a drive forward command
-                # ser.write(b'obs_moveForward\n')
-                transmit(packetize(CMD_LIST[0]))
-                
+                ser.write(b'obs_moveForward\n')
+                [responses, time_rx] = receive()
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             time.sleep(LOOP_PAUSE_TIME)
-            [responses, time_rx] = receive()
             
             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                 if sensor_left > sensor_right:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-                        sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+                        robot_readings = scan_rplidar()
+                        sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn left command
-                            # ser.write(b'obs_rotateLeft\n')
+                            ser.write(b'obs_rotateLeft\n')
                             time.sleep(LOOP_PAUSE_TIME)
-                            transmit(packetize(CMD_LIST[4]))
-                            [responses, time_rx] = receive()
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=-18)
 
                 elif sensor_right > sensor_left:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-                        sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+                        robot_readings = scan_rplidar()
+                        sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn right command
-                            #ser.write(b'obs_rotateRight\n')
+                            ser.write(b'obs_rotateRight\n')
                             time.sleep(LOOP_PAUSE_TIME)
-                            transmit(packetize(CMD_LIST[5]))
-                            [responses, time_rx] = receive()
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=18)
 
@@ -486,28 +469,31 @@ def localization(ser, NUM_PARTICLES=2000):
 
             ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
             HIGH_ESS = 0.65
-            
+            iteration += 1
             #if ess > HIGH_ESS * NUM_PARTICLES:
             #    update_particle_weights(particles, robot_readings, sigma=4)  # Calculate particle weights
             #    print("YESSSIIIIRRRRRR")
             #    particles = resample_particles(particles)   # Regenerate particles with weight
             #    convergence_condition += 1
             #    RESAMPLE_INTERVAL = 1
+            
+            if iteration == 1:
+                update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
+                particles = resample_particles(particles)   # Regenerate particles with weight
             if iteration % RESAMPLE_INTERVAL == 0 and iteration > 0:
                 j += 1
-                # [0, 30, 90, 150, 180, 210, 270, 330]
-                update_particle_weights(particles, [sensor_front, ], sigma)  # Calculate particle weights
-                ess = calculate_ess(particles)
-                print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
+                update_particle_weights(particles, [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl], sigma)  # Calculate particle weights
+                #ess = calculate_ess(particles)
+                #print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
                 particles = resample_particles(particles)   # Regenerate particles with weight
-                if j == 6:
+                if j == 4:
                     convergence_condition = True
-                elif j == 4:
-                    sigma = 3
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
                 elif j == 3:
-                    sigma = 5
+                    sigma = 2.5
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
+                elif j == 2:
+                    sigma = 4
                     particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
                     RESAMPLE_INTERVAL = 5
                     
@@ -558,6 +544,6 @@ def localization(ser, NUM_PARTICLES=2000):
 
 
 
-ser = serial.Serial('COM7', 9600, timeout=1)
+ser = serial.Serial('COM3', 9600, timeout=1)
 localization(ser)
 ser.close()

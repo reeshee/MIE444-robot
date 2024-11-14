@@ -342,7 +342,7 @@ def localization(NUM_PARTICLES=2000):
     sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
     iteration = 0
     RESAMPLE_INTERVAL = 10
-    convergence_condition = 0
+    convergence_condition = False
     ess = 0
     sigma = 12
     j = 0
@@ -356,7 +356,7 @@ def localization(NUM_PARTICLES=2000):
 
             # Pause to control command rate
             time.sleep(LOOP_PAUSE_TIME)
-            iteration += 1
+            
 
             # Handle movement commands based on sensor readings
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
@@ -440,6 +440,7 @@ def localization(NUM_PARTICLES=2000):
 
             ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
             HIGH_ESS = 0.65
+            iteration += 1
             
             #if ess > HIGH_ESS * NUM_PARTICLES:
             #    update_particle_weights(particles, robot_readings, sigma=4)  # Calculate particle weights
@@ -447,20 +448,24 @@ def localization(NUM_PARTICLES=2000):
             #    particles = resample_particles(particles)   # Regenerate particles with weight
             #    convergence_condition += 1
             #    RESAMPLE_INTERVAL = 1
+            if iteration == 1:
+                update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
+                particles = resample_particles(particles)   # Regenerate particles with weight
+            
             if iteration % RESAMPLE_INTERVAL == 0 and iteration > 0:
                 j += 1
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
-                ess = calculate_ess(particles)
-                print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
+                #ess = calculate_ess(particles)
+                #print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
                 particles = resample_particles(particles)   # Regenerate particles with weight
-                if j == 6:
+                if j == 4:
                     convergence_condition = True
-                elif j == 4:
-                    sigma = 3
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
                 elif j == 3:
-                    sigma = 5
+                    sigma = 2.5
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
+                elif j == 2:
+                    sigma = 4
                     particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
                     RESAMPLE_INTERVAL = 5
                     
@@ -494,7 +499,7 @@ def localization(NUM_PARTICLES=2000):
 
                 # Save the top 50 particles
                 top_50_particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:50]
-                print(top_50_particles)
+                #print(top_50_particles)
                 print("Top 50 particles saved for reinitialization.")
                 break
             
