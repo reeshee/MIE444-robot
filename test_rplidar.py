@@ -351,7 +351,8 @@ def localization(ser, NUM_PARTICLES=2000):
     #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = robot_readings
     
     
-    sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
+    #sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
+    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
     # Need to change the following:
     # 1. 0 Deg: sensor_front STAYS
     # 2. 30 Deg: sensor_right change to sensor_frontr
@@ -389,55 +390,70 @@ def localization(ser, NUM_PARTICLES=2000):
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
                 print("move forward")
                 # Send a drive forward command
-                ser.write(b'obs_moveForward\n')
+                #ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[0]))
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             elif sensor_left > sensor_right and sensor_left > sensor_front:
                 #print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                ser.write(b'obs_smallrotateLeft\n')
+                #ser.write(b'obs_smallrotateLeft\n')
+                #time.sleep(LOOP_PAUSE_TIME)
+                #ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[1]))
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[0]))
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_left > sensor_right and sensor_left < sensor_front:
                 print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                ser.write(b'obs_smallrotateLeft\n')
+                #ser.write(b'obs_smallrotateLeft\n')
+                #time.sleep(LOOP_PAUSE_TIME)
+                #ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[1]))
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[0]))
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_right > sensor_left and sensor_right > sensor_front:
                 print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                ser.write(b'obs_smallrotateRight\n')
+                # ser.write(b'obs_smallrotateRight\n')
+                # time.sleep(LOOP_PAUSE_TIME)
+                # ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[2]))
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[0]))
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             elif sensor_right > sensor_left and sensor_right < sensor_front:
                 print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                ser.write(b'obs_smallrotateRight\n')
+                # ser.write(b'obs_smallrotateRight\n')
+                # time.sleep(LOOP_PAUSE_TIME)
+                # ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[2]))
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[0]))
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             else:
                 print("move forward 2")
                 # Send a drive forward command
-                ser.write(b'obs_moveForward\n')
-                [responses, time_rx] = receive()
+                # ser.write(b'obs_moveForward\n')
+                transmit(packetize(CMD_LIST[0]))
+                
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             time.sleep(LOOP_PAUSE_TIME)
+            [responses, time_rx] = receive()
             
             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                 if sensor_left > sensor_right:
@@ -445,8 +461,10 @@ def localization(ser, NUM_PARTICLES=2000):
                         sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn left command
-                            ser.write(b'obs_rotateLeft\n')
+                            # ser.write(b'obs_rotateLeft\n')
                             time.sleep(LOOP_PAUSE_TIME)
+                            transmit(packetize(CMD_LIST[4]))
+                            [responses, time_rx] = receive()
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=-18)
 
@@ -455,8 +473,10 @@ def localization(ser, NUM_PARTICLES=2000):
                         sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn right command
-                            ser.write(b'obs_rotateRight\n')
+                            #ser.write(b'obs_rotateRight\n')
                             time.sleep(LOOP_PAUSE_TIME)
+                            transmit(packetize(CMD_LIST[5]))
+                            [responses, time_rx] = receive()
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=18)
 
@@ -475,7 +495,8 @@ def localization(ser, NUM_PARTICLES=2000):
             #    RESAMPLE_INTERVAL = 1
             if iteration % RESAMPLE_INTERVAL == 0 and iteration > 0:
                 j += 1
-                update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
+                # [0, 30, 90, 150, 180, 210, 270, 330]
+                update_particle_weights(particles, [sensor_front, ], sigma)  # Calculate particle weights
                 ess = calculate_ess(particles)
                 print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
