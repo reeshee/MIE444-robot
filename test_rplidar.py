@@ -33,7 +33,7 @@ from PFLocalization import (
     resample_particles, estimate_robot_position, calculate_ess
 )
 from maze import Maze
-from scan_processing import scan_rplidar
+from scan_processing import scan_rplidar, send_command
 import config as CONFIG
 import socket
 import time
@@ -73,6 +73,8 @@ if not SIMULATE:
     except serial.SerialException:
         print(f'Serial connection was refused.\nEnsure {PORT_SERIAL} is the correct port and nothing else is connected to it.')
 
+raspberry_pi_ip = '100.67.157.87'  # Raspberry Pi's IP address when connected to UofT wifi
+port = 8888
 
 # Initialize Pygame for Particle Visualization
 pygame.init()
@@ -390,50 +392,50 @@ def localization(ser, NUM_PARTICLES=2000):
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
                 print("move forward")
                 # Send a drive forward command
-                ser.write(b'obs_moveForward\n')
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             elif sensor_left > sensor_right and sensor_left > sensor_front:
                 #print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                ser.write(b'obs_smallrotateLeft\n')
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_left > sensor_right and sensor_left < sensor_front:
                 print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                ser.write(b'obs_smallrotateLeft\n')
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_right > sensor_left and sensor_right > sensor_front:
                 print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                ser.write(b'obs_smallrotateRight\n')
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             elif sensor_right > sensor_left and sensor_right < sensor_front:
                 print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                ser.write(b'obs_smallrotateRight\n')
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                ser.write(b'obs_moveForward\n')
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             else:
                 print("move forward 2")
                 # Send a drive forward command
-                ser.write(b'obs_moveForward\n')
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 [responses, time_rx] = receive()
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
@@ -447,7 +449,7 @@ def localization(ser, NUM_PARTICLES=2000):
                         sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn left command
-                            ser.write(b'obs_rotateLeft\n')
+                            send_command(raspberry_pi_ip, port,b'obs_rotateLeft\n')
                             time.sleep(LOOP_PAUSE_TIME)
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=-18)
@@ -458,7 +460,7 @@ def localization(ser, NUM_PARTICLES=2000):
                         sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn right command
-                            ser.write(b'obs_rotateRight\n')
+                            send_command(raspberry_pi_ip, port,b'obs_rotateRight\n')
                             time.sleep(LOOP_PAUSE_TIME)
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=18)
@@ -537,8 +539,6 @@ def localization(ser, NUM_PARTICLES=2000):
     finally:
         #pygame.quit()
         print("Localization complete.")
-
-
 
 ser = serial.Serial('COM3', 9600, timeout=1)
 localization(ser)

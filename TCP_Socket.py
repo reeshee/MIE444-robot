@@ -45,7 +45,7 @@ def get_rplidar_scans(client_socket, scan_limit):
 
 TARGET_ANGLES = [0, 30, 90, 150, 180, 210, 270, 330]
 ANGLE_TOLERANCE = 5  # Degrees tolerance to consider around the target angle
-DEFAULT_DISTANCE = 9.375  # cm, the assumed distance when too close to the wall
+DEFAULT_DISTANCE = 90.375  # cm, the assumed distance when too close to the wall
 
 def normalize_angle(angle):
     """Normalize an angle to be between 0 and 360 degrees."""
