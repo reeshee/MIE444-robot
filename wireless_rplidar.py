@@ -33,7 +33,7 @@ from PFLocalization import (
     resample_particles, estimate_robot_position, calculate_ess
 )
 from maze import Maze
-#from scan_processing import target_scans
+from scan_processing import scan_rplidar, send_command
 import config as CONFIG
 import socket
 import time
@@ -49,7 +49,7 @@ PORT_RX = 61201         # The port used by the *CLIENT* to send data
 
 ### Serial Setup ###
 BAUDRATE = 9600         # Baudrate in bps
-PORT_SERIAL = 'COM3'    # COM port identification
+PORT_SERIAL = 'ACM0'    # COM port identification
 TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
 
 ### Packet Framing values ###
@@ -73,6 +73,9 @@ if not SIMULATE:
     except serial.SerialException:
         print(f'Serial connection was refused.\nEnsure {PORT_SERIAL} is the correct port and nothing else is connected to it.')
 
+# raspberry_pi_ip = '100.67.157.87' # Raspberry Pi's IP address when connected to UofT wifi
+raspberry_pi_ip = '172.20.10.3' # Raspberry Pi's IP address when connected to Baqir's iPhone
+port = 8888
 
 # Initialize Pygame for Particle Visualization
 pygame.init()
@@ -326,29 +329,57 @@ def handle_pygame_events():
             RUNNING = False
 
 
-def localization(NUM_PARTICLES=2000):
+def localization(ser, NUM_PARTICLES=2000):
     
     ############## Main section for the open loop control algorithm ##############
-    LOOP_PAUSE_TIME = 0.1 # seconds
+    LOOP_PAUSE_TIME = 1 # seconds
     # Main loop
     RUNNING = True
     
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
-    threshold = 7.7
-    diag_threshold = 7.7
-    NUM_STEPS = 555
-    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+    threshold = 7.5*25.4
+    diag_threshold = 7.5*25.4
+    NUM_STEPS = 786
+    RESAMPLE_INTERVAL = 10
     iteration = 0
-    RESAMPLE_INTERVAL = 20
     convergence_condition = False
     ess = 0
     sigma = 12
     j = 0
     
+    robot_readings = scan_rplidar()
+    #print(f"robot_readings{robot_readings}")
+    
+    #sensor_back, sensor_right, sensor_left, sensor_front, sensor_backl, sensor_backr, sensor_frontl, sensor_frontr = robot_readings
+    sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
+    #sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = robot_readings
+
+    # Need to change the following:
+    # 1. 0 Deg: sensor_front STAYS
+    # 2. 30 Deg: sensor_right change to sensor_frontr
+    # 3. 90 Deg: sensor_left change to sensor_right
+    # 4. 150 Deg: sensor_back change to sensor_backr
+    # 5. 180 Deg: sensor_frontl change to sensor_back
+    # 6. 210 Deg: sensor_frontr change to sensor_backl
+    # 7. 270 Deg: sensor_left change to sensor_backl
+    # 8. 330 Deg: sensor_backr change to sensor_frontl
+    ####### If we also want to account for the fact that the lidar is rotated 180 degrees, then these values at the angles should be:
+    #------------------------------#
+    #1. 0 Deg = sensor_back
+    #2. 30 Deg = sensor_backl
+    #3. 90 deg = sensor_left
+    #4. 150 Deg = sensor_frontl
+    #5. 180 Deg = sensor_front
+    #6. 210 Deg = sensor_frontr
+    #7. 270 Deg = sensor_right
+    #8. 330 Deg = sensor_backr
+    # -----------------------------#
     try:
         for i in range(NUM_STEPS):
+            print("Loop starts")
+            print(f"robot_readings{robot_readings}")
             # Handle Pygame events
             handle_pygame_events()
             if not RUNNING:
@@ -356,91 +387,91 @@ def localization(NUM_PARTICLES=2000):
 
             # Pause to control command rate
             time.sleep(LOOP_PAUSE_TIME)
+            iteration += 1
             
-
             # Handle movement commands based on sensor readings
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
+                print("move forward")
                 # Send a drive forward command
-                transmit(packetize(CMD_LIST[0]))
-                time.sleep(LOOP_PAUSE_TIME)
-                [responses, time_rx] = receive()
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             elif sensor_left > sensor_right and sensor_left > sensor_front:
+                #print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                transmit(packetize(CMD_LIST[1]))
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
-                [responses, time_rx] = receive()
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_left > sensor_right and sensor_left < sensor_front:
+                print("rotate_left small and move forward")
                 # Send a drive forward command with left correction
-                transmit(packetize(CMD_LIST[1]))
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateLeft\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
-                [responses, time_rx] = receive()
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=-10)
 
             elif sensor_right > sensor_left and sensor_right > sensor_front:
+                print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                transmit(packetize(CMD_LIST[2]))
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
-                [responses, time_rx] = receive()
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             elif sensor_right > sensor_left and sensor_right < sensor_front:
+                print("rotate_right small and move forward")
                 # Send a drive forward command with right correction
-                transmit(packetize(CMD_LIST[2]))
+                send_command(raspberry_pi_ip, port,b'obs_smallrotateRight\n')
                 time.sleep(LOOP_PAUSE_TIME)
-                transmit(packetize(CMD_LIST[0]))
-                [responses, time_rx] = receive()
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=10)
 
             else:
+                print("move forward 2")
                 # Send a drive forward command
-                transmit(packetize(CMD_LIST[0]))
+                send_command(raspberry_pi_ip, port,b'obs_moveForward\n')
                 [responses, time_rx] = receive()
                 # Move particles
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
-
+            time.sleep(LOOP_PAUSE_TIME)
+            
             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                 if sensor_left > sensor_right:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-                        sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+                        robot_readings = scan_rplidar()
+                        sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn left command
+                            send_command(raspberry_pi_ip, port,b'obs_rotateLeft\n')
                             time.sleep(LOOP_PAUSE_TIME)
-                            transmit(packetize(CMD_LIST[4]))
-                            [responses, time_rx] = receive()
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=-18)
 
                 elif sensor_right > sensor_left:
                     while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-                        sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+                        robot_readings = scan_rplidar()
+                        sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
                         if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                             # Send a turn right command
+                            send_command(raspberry_pi_ip, port,b'obs_rotateRight\n')
                             time.sleep(LOOP_PAUSE_TIME)
-                            transmit(packetize(CMD_LIST[5]))
-                            [responses, time_rx] = receive()
                             # Move particles
                             move_particles(particles, move_distance=0, rotation_change=18)
 
             # Check robot sensors
-            sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
-            robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl]   # Robot sensors list
+            robot_readings = scan_rplidar()
+            sensor_back, sensor_backl, sensor_left, sensor_frontl, sensor_front, sensor_frontr, sensor_right, sensor_backr = robot_readings  # Check robot sensors
 
             ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
             HIGH_ESS = 0.65
-            iteration += 1
             
             #if ess > HIGH_ESS * NUM_PARTICLES:
             #    update_particle_weights(particles, robot_readings, sigma=4)  # Calculate particle weights
@@ -448,28 +479,24 @@ def localization(NUM_PARTICLES=2000):
             #    particles = resample_particles(particles)   # Regenerate particles with weight
             #    convergence_condition += 1
             #    RESAMPLE_INTERVAL = 1
-            if iteration == 1:
-                update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
-                particles = resample_particles(particles)   # Regenerate particles with weight
-            
             if iteration % RESAMPLE_INTERVAL == 0 and iteration > 0:
                 j += 1
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
-                #ess = calculate_ess(particles)
-                #print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
+                ess = calculate_ess(particles)
+                print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
                 particles = resample_particles(particles)   # Regenerate particles with weight
-                if j == 3:
+                if j == 6:
                     convergence_condition = True
-                elif j == 2:
-                    sigma = 2
-                    #particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
-                elif j == 1:
+                elif j == 4:
+                    sigma = 3
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
+                elif j == 3:
                     sigma = 5
-                    #particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
                     RESAMPLE_INTERVAL = 5
                     
-                    print(i)
+                    print("Loop Iteration: ", i)
 
 
             # Estimate robot position using top particles
@@ -499,7 +526,6 @@ def localization(NUM_PARTICLES=2000):
 
                 # Save the top 50 particles
                 top_50_particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:50]
-                #print(top_50_particles)
                 print("Top 50 particles saved for reinitialization.")
                 break
             
@@ -514,5 +540,7 @@ def localization(NUM_PARTICLES=2000):
     finally:
         #pygame.quit()
         print("Localization complete.")
-        
-localization()
+
+ser = serial.Serial('ACM0', 9600, timeout=1)
+localization(ser)
+ser.close()

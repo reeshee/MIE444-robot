@@ -173,7 +173,7 @@ def update_particle_weights(particles, robot_readings, sigma=5):
     for i, particle in enumerate(particles):
         particle.weight = weights[i]
 
-    # Mark particles with low weights as "bad" for resampling
+    # Mark particles with low weights as bad for resampling
     for particle in particles:
         if particle.weight < (1.0 / num_particles):  # Example threshold
             particle.to_resample = True

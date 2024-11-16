@@ -196,6 +196,7 @@ def check_sensors():
     # Check an ultrasonic sensor 'u0'
     transmit(packetize('u0'))
     [responses, time_rx] = receive()
+    #print(responses)
     #print(f"Ultrasonic 0 reading: {response_string('u0',responses)}")
     sensor_front = float(responses[0][1])
 
@@ -251,7 +252,7 @@ PORT_RX = 61201         # The port used by the *CLIENT* to send data
 
 ### Serial Setup ###
 BAUDRATE = 9600         # Baudrate in bps
-PORT_SERIAL = 'COM3'    # COM port identification
+PORT_SERIAL = 'COM7'    # COM port identification
 TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
 
 ### Packet Framing values ###
@@ -299,6 +300,7 @@ def handle_pygame_events():
 
 
 
+
 def localization(NUM_PARTICLES=2000):
     
     ############## Main section for the open loop control algorithm ##############
@@ -315,7 +317,7 @@ def localization(NUM_PARTICLES=2000):
     sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
     iteration = 0
     RESAMPLE_INTERVAL = 10
-    convergence_condition = 0
+    convergence_condition = False
     ess = 0
     sigma = 12
     j = 0
@@ -329,7 +331,7 @@ def localization(NUM_PARTICLES=2000):
 
             # Pause to control command rate
             time.sleep(LOOP_PAUSE_TIME)
-            iteration += 1
+            
 
             # Handle movement commands based on sensor readings
             if sensor_front > threshold and sensor_frontr > diag_threshold and sensor_frontl > diag_threshold:
@@ -413,6 +415,7 @@ def localization(NUM_PARTICLES=2000):
 
             ESS_THRESHOLD = 0.5 * NUM_PARTICLES # Set threshold to 50% of total particles
             HIGH_ESS = 0.65
+            iteration += 1
             
             #if ess > HIGH_ESS * NUM_PARTICLES:
             #    update_particle_weights(particles, robot_readings, sigma=4)  # Calculate particle weights
@@ -420,20 +423,24 @@ def localization(NUM_PARTICLES=2000):
             #    particles = resample_particles(particles)   # Regenerate particles with weight
             #    convergence_condition += 1
             #    RESAMPLE_INTERVAL = 1
+            if iteration == 1:
+                update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
+                particles = resample_particles(particles)   # Regenerate particles with weight
+            
             if iteration % RESAMPLE_INTERVAL == 0 and iteration > 0:
                 j += 1
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
-                ess = calculate_ess(particles)
-                print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
+                #ess = calculate_ess(particles)
+                #print(f"ESS = {ess}  --------------- Convergence Condition = {convergence_condition}")
                 #if ess < ESS_THRESHOLD:
                 particles = resample_particles(particles)   # Regenerate particles with weight
-                if j == 6:
+                if j == 4:
                     convergence_condition = True
-                elif j == 4:
-                    sigma = 3
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
                 elif j == 3:
-                    sigma = 5
+                    sigma = 2.5
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500] 
+                elif j == 2:
+                    sigma = 4
                     particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
                     RESAMPLE_INTERVAL = 5
                     
@@ -462,15 +469,14 @@ def localization(NUM_PARTICLES=2000):
 
             if convergence_condition:
                 print(f"Normal Coords = [{ex},{ey},{etheta}]")
-                eposition = (ex, ey)
+                eposition = (ey, ex)
                 eorientation = etheta
 
                 # Save the top 50 particles
                 top_50_particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:50]
-                print(top_50_particles)
+                #print(top_50_particles)
                 print("Top 50 particles saved for reinitialization.")
-                
-                return eposition, eorientation, top_50_particles
+                return (eposition, eorientation, top_50_particles)
             
             
 
@@ -483,6 +489,8 @@ def localization(NUM_PARTICLES=2000):
     finally:
         #pygame.quit()
         print("Localization complete.")
+        
+
 
 
 ############## Navigation Code #############
@@ -543,7 +551,7 @@ def a_star_search(maze, start, goal):
                     #print(f"Neighbor {neighbor} added to open set with f_score: {f_score[neighbor]}, heuristic: {heuristic(neighbor, goal)}")
     print (iteration_count)
     print("No path found.")
-    return float('inf')
+    return "inf"
 
 
 # Helper function to determine if the position is valid for the rover given its size and required clearance
@@ -552,8 +560,12 @@ def is_valid_position_for_rover(maze, position):
     cx, cy = position
 
     # Iterate over a square area around the position to ensure no walls are within 5 inches
-    for dx in range(-4, 4):
-        for dy in range(-4, 4):
+    for dx in range(-3, 4):
+        for dy in range(-3, 4):
+            
+            if cx < 4 or cx >= (rows - 4) or cy < 4 or cy >= (cols - 4):
+                return False  # Too close to the maze border
+
             nx, ny = cx + dx, cy + dy
             # Check if the position is out of bounds
             if not (0 <= nx < rows and 0 <= ny < cols):
@@ -564,188 +576,308 @@ def is_valid_position_for_rover(maze, position):
     
     return True
 
-def navigate_to(maze, position, est_position, est_orientation, top_50_particles, max_retries=3, current_retry=0, orientation=0):
-    
-    #est_position, est_orientation, top_50_particles = localization()### localization function
-    
-    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
-    #scans_rpl = scan_rplidar(5)    # Check robot sensors
-    #sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = scans_rpl
+
+
+def navigate_to(maze, position, est_position, est_orientation, top_50_particles, max_retries=3, current_retry=0):
+
     print(est_position, est_orientation)
-    # if current_retry >= max_retries:
-    #     print("Maximum retries reached. Navigation aborted.")
-    #     return current_position  # Abort navigation after too many retries
-    
+
     # Use A* to find the best path to the target loading zone
+    
     path_points = a_star_search(maze, est_position, position)
-    #adjust_rover_orientation(est_orientation, top_50_particles) # sets orientation to 0 with respect to East
-    
-    
+
     if position is None:
         print("No valid loading zone to navigate to.")
         return est_position  # No valid path found, return current position
 
     print(f"Navigating from {est_position} to Target Zone {position} with path points: {path_points}")
-    
     print(position)
 
+    # While the rover is not within the target tolerance
     while abs(est_position[0] - position[0]) >= 0.3 or abs(est_position[1] - position[1]) >= 0.3:
-    # Iterate through each path point using the helper function
+        # Iterate through each path point
         for point in path_points:
-            est_position, est_orientation, boolean = move_to_waypoint_with_localization(est_position, point, maze, est_orientation, top_50_particles)
+            # Adjust orientation towards the next waypoint
+            est_orientation, rotation_changer = adjust_rover_orientation(est_position, point, est_orientation, top_50_particles)
+            move_particles(top_50_particles, move_distance=0, rotation_change=rotation_changer)
+            sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()
+            robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr,
+                      sensor_back, sensor_backl, sensor_left, sensor_frontl]
 
-        # Check if the current position is False, indicating an out-of-tolerance situation
-            if boolean is False:
-                # Out of tolerance boundary, recalculating path
+            # Update particle weights and resample
+            update_particle_weights(top_50_particles, robot_readings, sigma=8)
+            #print("UPDATED!!!!!!!!")
+            resample_particles(top_50_particles)
+            time.sleep(0.4)
+            estimated_position = estimate_robot_position(top_50_particles)
+            # Move to the waypoint
+            est_position, est_orientation, success = move_to_waypoint_with_localization(
+                est_position, point, maze, est_orientation, top_50_particles)
+            # If movement was unsuccessful
+            if not success:
+                est_orientation, rotation_changer = adjust_rover_orientation(est_position, point, est_orientation, top_50_particles)
+                # Recalculate path from current position
+                if not (0 <= est_position[0] < 48 and 0 <= est_position[1] < 96):
+                    print("Start position is out of maze bounds.")
+                    print(f"What the HEEEEL {est_position}")
+                    return est_position
+                print(est_position)
                 print("Out of tolerance boundary, recalculating path.")
-                adjust_rover_orientation(orientation,top_50_particles)
-                orientation = 0
+                #start = (int(round(est_position[0])), int(round(est_position[1])))
+                #goal = (int(round(position[0])), int(round(position[1])))
                 path_points = a_star_search(maze, est_position, position)
                 print(path_points)
-                break
+                break  # Exit the for loop to start over with new path
 
-    return est_position, (f"found final position{est_position}")
+        # After the for loop, check if we have reached the target position
+        if abs(est_position[0] - position[0]) < 0.3 and abs(est_position[1] - position[1]) < 0.3:
+            break  # Reached the target
+
+    return est_position, (f"found final position {est_position}")
 
 
+# def move_to_waypoint_with_localization(current_position, waypoint, maze, orientation, top_50_particles):
+#     CMD_LIST = ['r0:45', 'r0:-45', 'w0:1'] # first two commands are redundant, I dont use anymore
+    
+#     # Move forward towards the waypoint
+#     transmit(packetize(CMD_LIST[2]))
+#     time.sleep(LOOP_PAUSE_TIME)
+#     [responses, time_rx] = receive()
+#     #ser.write(b'move_forward\n')
+#     print("Command: move_forward")
+
+#     # Wait for movement to complete (adjust time as needed)
+#     time.sleep(0.2)
+#     #
+    
+#     tolerance = 1  # Tolerance in units (e.g., inches)
+
+#     # Calculate the direction vector to the waypoint
+#     dx = waypoint[0] - current_position[0]
+#     dy = waypoint[1] - current_position[1]
+#     rotation_changer = 0
+#     # Calculate the angle to the waypoint from the current position (in degrees)
+#     target_angle = math.degrees(math.atan2(dy, dx)) % 360
+
+#     # Calculate the minimal angle to turn
+#     angle_difference = (target_angle - orientation + 360) % 360
+#     if angle_difference > 180:
+#         angle_difference -= 360  # Choose the shortest rotation
+
+#     # Determine turning direction and execute turn
+#     if angle_difference > 20:
+#     # Rotate right
+#         transmit(packetize(f'r0:{abs(angle_difference)}'))
+#         rotation_changer = abs(angle_difference)
+#         orientation = (orientation + rotation_changer) % 360
+#         print(f"Command: rotate_right by {rotation_changer} degrees")
+#     elif angle_difference < -20:
+#         # Rotate left
+#         transmit(packetize(f'r0:-{abs(angle_difference)}'))
+#         rotation_changer = -abs(angle_difference)
+#         orientation = (orientation + rotation_changer) % 360
+#         print(f"Command: rotate_left by {abs(rotation_changer)} degrees")
+#     else:
+#         print("No rotation needed.")
+#         rotation_changer = 0
+
+#     # Wait for rotation to complete (adjust time as needed)
+#     time.sleep(0.4)
+
+
+#     #Update the display
+#     canvas.fill(CONFIG.background_color) # Clear screen
+#     draw_maze()                          # Draw maze
+#     draw_particles_on_canvas(top_50_particles)           # Draw particles
+#     # Simulate the rover moving to the waypoint
+#     #LOCALIZATION LOCALIZATION LOCALIZTION
+#     move_particles(top_50_particles, move_distance=1, rotation_change = rotation_changer)
+    
+#     #scans_rpl = scan_rplidar(5)    # Check robot sensors
+#     #sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = scans_rpl
+#     sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
+#     robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl]   # Robot sensors list
+#     #print("First",top_50_particles)
+    
+#     update_particle_weights(top_50_particles, robot_readings)
+#     #print("update",top_50_particles)
+#     resample_particles(top_50_particles)
+#     #print("resample",top_50_particles)
+#     time.sleep(0.4)
+#     estimated_position = estimate_robot_position(top_50_particles)
+    
+#     # Convert to screen coordinates
+#     if estimated_position:
+#         ex, ey, etheta = estimated_position
+#         ex_screen = int(ex * CONFIG.ppi + CONFIG.border_pixels)
+#         ey_screen = int(ey * CONFIG.ppi + CONFIG.border_pixels)
+#         pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle for estimated position
+    
+#     if current_position:
+#         pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle for estimated position
+#     pygame.display.flip()  # Update the full display
+    
+#     eposition = (ex, ey)
+#     eorientation = etheta
+
+#     # Check if within tolerance
+#     error_x = abs(eposition[0] - waypoint[0])
+#     error_y = abs(eposition[1] - waypoint[1])
+
+#     if error_x <= tolerance and error_y <= tolerance:
+#         print(f"Rover reached the waypoint {waypoint} within tolerance.")
+#         current_position = waypoint  # Update position
+#     else:
+#         print(f"Rover did not reach the waypoint {waypoint} within tolerance.")
+#         current_position = eposition
+#         orientation = eorientation
+#         return current_position, orientation, False
+
+#     return current_position, orientation, True
+
+# def adjust_rover_orientation(lidar_angle, top_50_particles):     #REDOOOOO!!!!!!__________________________________________________
 def move_to_waypoint_with_localization(current_position, waypoint, maze, orientation, top_50_particles):
-    CMD_LIST = ['r0:50', 'r0:-50', 'w0:1']
-    
-    # Update the display
-    canvas.fill(CONFIG.background_color) # Clear screen
-    draw_maze()                          # Draw maze
-    draw_particles_on_canvas(top_50_particles)           # Draw particles
-    
-    tolerance = 1  # Tolerance in units (e.g., inches)
-
-    # Calculate the direction vector to the waypoint
-    dx = waypoint[0] - current_position[0]
-    dy = waypoint[1] - current_position[1]
-    rotation_changer = 0
-    # Calculate the angle to the waypoint from the current position (in degrees)
-    target_angle = math.degrees(math.atan2(dy, dx)) % 360
-
-    # Calculate the minimal angle to turn
-    angle_difference = (target_angle - orientation + 360) % 360
-    if angle_difference > 180:
-        angle_difference -= 360  # Choose the shortest rotation
-
-    # Determine turning direction and execute turn
-    if angle_difference > 45:
-        transmit(packetize(CMD_LIST[0]))
-        time.sleep(LOOP_PAUSE_TIME)
-        [responses, time_rx] = receive()
-        print(f"Command: rotate_right by {angle_difference} degrees")
-        rotation_changer = 90
-        # Update orientation
-        orientation = (orientation + rotation_changer) % 360
-    elif angle_difference < -45:
-        transmit(packetize(CMD_LIST[1]))
-        time.sleep(LOOP_PAUSE_TIME)
-        [responses, time_rx] = receive()
-        print(f"Command: rotate_left by {-angle_difference} degrees")
-        rotation_changer = -90
-        # Update orientation
-        orientation = (orientation + rotation_changer) % 360
-    else:
-        print("No rotation needed.")
-
-    # Wait for rotation to complete (adjust time as needed)
-    time.sleep(0.4)
+    CMD_MOVE_FORWARD = 'w0:1'  # Move forward command
 
     # Move forward towards the waypoint
-    transmit(packetize(CMD_LIST[2]))
+    transmit(packetize(CMD_MOVE_FORWARD))
     time.sleep(LOOP_PAUSE_TIME)
     [responses, time_rx] = receive()
-    #ser.write(b'move_forward\n')
     print("Command: move_forward")
 
     # Wait for movement to complete (adjust time as needed)
     time.sleep(0.2)
 
-    # Simulate the rover moving to the waypoint
-    #LOCALIZATION LOCALIZATION LOCALIZTION
-    move_particles(top_50_particles, move_distance=1, rotation_change = rotation_changer)
-    
-    #scans_rpl = scan_rplidar(5)    # Check robot sensors
-    #sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = scans_rpl
-    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
-    robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl]   # Robot sensors list
-    #print("First",top_50_particles)
-    
-    update_particle_weights(top_50_particles, robot_readings)
-    #print("update",top_50_particles)
+    # Update the display
+    canvas.fill(CONFIG.background_color)  # Clear screen
+    draw_maze()                           # Draw maze
+    draw_particles_on_canvas(top_50_particles)  # Draw particles
+
+    tolerance = 1  # Tolerance in units (e.g., inches)
+
+    # Since rotation is handled in adjust_rover_orientation, we remove rotation logic here
+
+    # Simulate the rover moving forward in the particle filter
+    move_particles(top_50_particles, move_distance=1, rotation_change=0)
+
+    # Get sensor readings
+    sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()
+    robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr,
+                      sensor_back, sensor_backl, sensor_left, sensor_frontl]
+
+    # Update particle weights and resample
+    update_particle_weights(top_50_particles, robot_readings, sigma=8)
+    #print("UPDATED!!!!!!!!")
     resample_particles(top_50_particles)
-    #print("resample",top_50_particles)
     time.sleep(0.4)
-    estimated_position = estimate_robot_position(top_50_particles)
-    
-    # Convert to screen coordinates
+    avg_x, avg_y, etheta = estimate_robot_position(top_50_particles)
+    estimated_position = avg_x, avg_y
+    # Convert to screen coordinates and display estimated position
     if estimated_position:
-        ex, ey, etheta = estimated_position
+        ex, ey = estimated_position
         ex_screen = int(ex * CONFIG.ppi + CONFIG.border_pixels)
         ey_screen = int(ey * CONFIG.ppi + CONFIG.border_pixels)
         pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle for estimated position
-    
-    if current_position:
-        pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle for estimated position
+
     pygame.display.flip()  # Update the full display
     
-    e_position = (ex, ey)
+
+
+    eposition = (ey, ex)
     eorientation = etheta
 
     # Check if within tolerance
-    error_x = abs(e_position[0] - waypoint[0])
+    error_x = abs(eposition[0] - waypoint[0])
     error_y = abs(eposition[1] - waypoint[1])
 
     if error_x <= tolerance and error_y <= tolerance:
         print(f"Rover reached the waypoint {waypoint} within tolerance.")
         current_position = waypoint  # Update position
+        success = True
     else:
         print(f"Rover did not reach the waypoint {waypoint} within tolerance.")
-        current_position = e_position
+        current_position = eposition
+        print(current_position) 
         orientation = eorientation
-        return current_position, orientation, False
+        success = False
 
-    return current_position, orientation, True
-
-def adjust_rover_orientation(lidar_angle, top_50_particles):     #REDOOOOO!!!!!!__________________________________________________
-
-    # Round the LIDAR angle to the nearest integer
-    lidar_angle_int = int(round(lidar_angle))
-    print(lidar_angle_int)
-    # Convert LIDAR angle (north=0°) to rover coordinate system (east=0°)
-    # Mapping: code_angle = (450 - lidar_angle) % 360
-    code_angle = (lidar_angle_int) % 360
-    print(code_angle)
-    # Desired orientation is 0 degrees (east)
-    desired_orientation = 0
-
-    # Calculate minimal angle difference to get to desired orientation
-    angle_to_rotate = code_angle
-    print(angle_to_rotate)
+    return current_position, orientation, success
 
 
-    # Determine rotation direction and prepare command
-    if angle_to_rotate > desired_orientation or angle_to_rotate > desired_orientation:
-        # Send reverse command
-        time.sleep(LOOP_PAUSE_TIME)
-        transmit(packetize(f'r0:{angle_to_rotate}'))
-        [responses, time_rx] = receive()
-        # Move particles
-        move_particles(top_50_particles, move_distance=0, rotation_change=angle_to_rotate)
-        print(f"rotated by{angle_to_rotate}")
-        time.sleep(LOOP_PAUSE_TIME)
-        #command = f'adjust{abs(int(angle_to_rotate))}\n'  r0:anglerotate
-        #ser.write(command.encode())
-        #print(f"Sending command: {command.strip()}")
+#     # Round the LIDAR angle to the nearest integer
+#     lidar_angle_int = int(round(lidar_angle))
+#     print(lidar_angle_int)
+#     # Convert LIDAR angle (north=0°) to rover coordinate system (east=0°)
+#     # Mapping: code_angle = (450 - lidar_angle) % 360
+#     code_angle = (lidar_angle_int) % 360
+#     print(code_angle)
+#     # Desired orientation is 0 degrees (east)
+#     desired_orientation = 0
+
+#     # Calculate minimal angle difference to get to desired orientation
+#     angle_to_rotate = code_angle
+#     print(angle_to_rotate)
+
+
+#     # Determine rotation direction and prepare command
+#     if angle_to_rotate > desired_orientation or angle_to_rotate > desired_orientation:
+#         # Send reverse command
+#         time.sleep(LOOP_PAUSE_TIME)
+#         transmit(packetize(f'r0:{angle_to_rotate}'))
+#         [responses, time_rx] = receive()
+#         # Move particles
+#         move_particles(top_50_particles, move_distance=0, rotation_change=angle_to_rotate)
+#         print(f"rotated by{angle_to_rotate}")
+#         time.sleep(LOOP_PAUSE_TIME)
+#         #command = f'adjust{abs(int(angle_to_rotate))}\n'  r0:anglerotate
+#         #ser.write(command.encode())
+#         #print(f"Sending command: {command.strip()}")
+#     else:
+#         print("No rotation needed.")
+#         # Optionally send a command or do nothing
+
+#     # Wait for rotation to complete (adjust time as needed based on your rover's rotation speed)
+#     time.sleep(1.2)
+
+#     return angle_to_rotate  # Return the angle for confirmation or further processing
+def adjust_rover_orientation(current_position, next_waypoint, current_orientation, top_50_particles):
+    # Calculate the direction vector to the waypoint
+    dx = next_waypoint[0] - current_position[0]
+    dy = next_waypoint[1] - current_position[1]
+
+    # Calculate the angle to the waypoint from the current position (in degrees)
+    target_angle = math.degrees(math.atan2(dy, dx)) % 360
+
+    # Calculate the minimal angle to turn
+    angle_difference = (target_angle - current_orientation + 360) % 360
+    if angle_difference > 180:
+        angle_difference -= 360  # Choose the shortest rotation
+
+    # Determine rotation direction and execute turn
+    rotation_changer = 0
+    if abs(angle_difference) > 5:  # Tolerance of 5 degrees
+        if angle_difference > 0:
+            # Rotate right
+            transmit(packetize(f'r0:{abs(angle_difference)}'))
+            rotation_changer = abs(angle_difference)
+            current_orientation = (current_orientation + rotation_changer) % 360
+            print(f"Command: rotate_right by {rotation_changer} degrees")
+        else:
+            # Rotate left
+            transmit(packetize(f'r0:-{abs(angle_difference)}'))
+            rotation_changer = -abs(angle_difference)
+            current_orientation = (current_orientation + rotation_changer) % 360
+            print(f"Command: rotate_left by {abs(rotation_changer)} degrees")
+        #[responses, time_rx] = receive()
+        # Update particles
+        # sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()
+        # robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr,
+        #               sensor_back, sensor_backl, sensor_left, sensor_frontl]
+
     else:
-        print("No rotation needed.")
-        # Optionally send a command or do nothing
-
-    # Wait for rotation to complete (adjust time as needed based on your rover's rotation speed)
-    time.sleep(1.2)
-
-    return angle_to_rotate  # Return the angle for confirmation or further processing
+        print(f"No rotation needed.{current_orientation}")
+    [responses, time_rx] = receive()
+    return current_orientation, rotation_changer  # Return the updated orientation
 
 
 
@@ -789,6 +921,8 @@ RUNNING = True
 LOOP_PAUSE_TIME = 0.1 # seconds
 
 eposition, eorientation, top_50_particles = localization(NUM_PARTICLES=2000)
+# est_position = eposition[1], eposition[0]
+# print(est_position)
 #print(eposition, eorientation, top_50_particles)
 #ser = serial.Serial('COM7', 9600, timeout=1)
 
