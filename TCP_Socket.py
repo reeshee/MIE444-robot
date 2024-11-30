@@ -41,11 +41,10 @@ def get_rplidar_scans(client_socket, scan_limit):
     
     return scan_data_collection
 
-
-
-TARGET_ANGLES = [0, 30, 90, 150, 180, 210, 270, 330]
-ANGLE_TOLERANCE = 5  # Degrees tolerance to consider around the target angle
-DEFAULT_DISTANCE = 9.375  # cm, the assumed distance when too close to the wall
+# Generate 60 target angles every 6 degrees
+TARGET_ANGLES = list(range(0, 360, 6))  # [0, 6, 12, ..., 354]
+ANGLE_TOLERANCE = 3  # Degrees tolerance to consider around the target angle
+# DEFAULT_DISTANCE = 93.75  # mm, the assumed distance when too close to the wall (Removed)
 
 def normalize_angle(angle):
     """Normalize an angle to be between 0 and 360 degrees."""
@@ -59,39 +58,74 @@ def get_target_angles(scans):
         scans (list of list): Each element is a list of (angle, distance) tuples from a single LIDAR scan.
 
     Returns:
-        dict: A dictionary of distances for each target angle.
+        dict: A dictionary of averaged distances for each target angle. 
+              If no valid readings are found for a target angle, its value is set to None.
     """
     angle_distances = {angle: [] for angle in TARGET_ANGLES}
     
     # Iterate over multiple scans
     for scan in scans:
-        # Create a sorted list of angles and distances from the current scan
-        scan = [(normalize_angle(angle), distance) for (angle, distance) in scan]  # Normalize angles
-        scan.sort(key=lambda x: x[0])  # Ensure the scan is sorted by angle
+        # Normalize and sort the scan data by angle
+        normalized_scan = [(normalize_angle(angle), distance) for (angle, distance) in scan]
+        normalized_scan.sort(key=lambda x: x[0])
         
         for target_angle in TARGET_ANGLES:
-            # Find readings close to the target angle
-            closest_points = []
-            for angle, distance in scan:
-                # Calculate the difference considering the circular nature of angles
-                diff = min(abs(target_angle - angle), abs((target_angle - 360) - angle), abs((target_angle + 360) - angle))
-                if diff <= ANGLE_TOLERANCE:
-                    closest_points.append((angle, distance))
+            # Find readings within ±3 degrees of the target angle
+            lower_bound = normalize_angle(target_angle - ANGLE_TOLERANCE)
+            upper_bound = normalize_angle(target_angle + ANGLE_TOLERANCE)
             
-            # If we found valid points within the tolerance, pick the minimum distance
+            closest_points = []
+            for angle, distance in normalized_scan:
+                # Handle angle wrap-around
+                if lower_bound <= upper_bound:
+                    in_sector = lower_bound <= angle <= upper_bound
+                else:
+                    in_sector = angle >= lower_bound or angle <= upper_bound
+                
+                if in_sector:
+                    if distance is not None and distance > 10:  # Assuming 10 mm as minimum valid distance
+                        closest_points.append(distance)
+            
             if closest_points:
-                min_distance = min([distance for angle, distance in closest_points if distance > 10])
+                min_distance = min(closest_points)
                 angle_distances[target_angle].append(min_distance)
             else:
-                # No valid readings found, use default distance
-                angle_distances[target_angle].append(DEFAULT_DISTANCE)
+                # No valid readings found, assign None
+                angle_distances[target_angle].append(None)
     
-    # Calculate the average distance for each target angle across all scans
+    # Calculate the average minimum distance for each target angle across all scans
     averaged_distances = {}
     for target_angle, distances in angle_distances.items():
-        if distances:
-            averaged_distances[target_angle] = sum(distances) / len(distances)
+        # Filter out None values
+        valid_distances = [d for d in distances if d is not None]
+        if valid_distances:
+            averaged_distance = sum(valid_distances) / len(valid_distances)
+            averaged_distances[target_angle] = averaged_distance
         else:
-            averaged_distances[target_angle] = DEFAULT_DISTANCE
+            # If all readings are None, assign None
+            averaged_distances[target_angle] = None
 
     return averaged_distances
+
+# Assuming 60 scans with each scan representing 6-degree increments
+def get_all_target_distances(scans, scans_per_average=5):
+    """
+    Processes scans to compute averaged minimum distances for each target angle.
+    
+    Args:
+        scans (list of list): List containing multiple scan data.
+        scans_per_average (int): Number of scans to average over.
+        
+    Returns:
+        dict: Averaged distances for each target angle. Values can be float or None.
+    """
+    # Ensure we have enough scans
+    if len(scans) < scans_per_average:
+        print(f"Not enough scans to average. Required: {scans_per_average}, Available: {len(scans)}")
+        return {angle: None for angle in TARGET_ANGLES}
+    
+    # Only consider the last 'scans_per_average' scans for averaging
+    recent_scans = scans[-scans_per_average:]
+    target_distances = get_target_angles(recent_scans)
+    
+    return target_distances

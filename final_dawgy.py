@@ -375,6 +375,7 @@ def localization(NUM_PARTICLES=1000):
                     time.sleep(LOOP_PAUSE_TIME)
                     return eposition, eorientation, top_50_particles
                 
+                # Clear the canvas to prepare for localization mode
                 canvas.fill(CONFIG.background_color)
 
                 # Enter a loop to listen for keyboard inputs for manual control
@@ -429,10 +430,6 @@ def localization(NUM_PARTICLES=1000):
                             us_sensor = send_command(rpi_ip, port, "obs_rotateRight")
                             #time.sleep(LOOP_PAUSE_TIME)
                             move_particles(particles, move_distance=0, rotation_change=54)
-                        elif event.key == pygame.K_l:
-                            us_sensor = send_command(rpi_ip, port, "arm_lower")
-                        elif event.key == pygame.K_u:
-                            us_sensor = send_command(rpi_ip, port, "arm_upper")
                         
                         robot_readings = scan_rplidar()
                         sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = section_scans(robot_readings)  # Check robot sensors
@@ -890,7 +887,7 @@ def navigate_to(maze, goal_positions_list, est_position, est_orientation, top_50
                 return navigate_to(maze, goal_positions_list, est_position, est_orientation, top_50_particles)
             else:
                 print("Iteration within success limit, next iteration initiated")
-    return est_position, est_orientation, top_50_particles, f"Found final position {est_position}"
+    return est_position, f"Found final position {est_position}"
 
 
 def orientation_fixer(current_orientation):
@@ -946,13 +943,6 @@ def orientation_fixer(current_orientation):
     print(f"Angle fixer completed. Corrected orientation: {current_orientation}")
     return current_orientation
 
-    # Since we want the difference from the original input angle
-    # Use the difference between the original angle and where it was snapped to
-    
-    # transmit(packetize(f"r0:{angle_difference}"))
-    # [responses, time_rx] = receive()
-    print(f"Angle fixer employed to correct rotation from {angle} to {corrected_angle}")
-    return corrected_angle
 
 ### Moves forward by segment: input is position | Segment length | segment (access dictionary) | orientation | top_50_particles
 def move_to_waypoint_with_localization(position, segment_length, segment, orientation, top_50_particles):
@@ -1036,169 +1026,48 @@ def adjust_rover_orientation(current_position, direction_vector, current_orienta
 
     print(f"No further rotation needed. Current orientation: {current_orientation}")
     return current_position, current_orientation, rotation_change
-
-def controller(eposition, eorientation, particles):
-    
-    LOOP_PAUSE_TIME = 0.2
-    manual_control = True
-    iteration = 0
-    sigma = 12
-    
-    
-    while manual_control:
-        # Handle Pygame events
-        event = pygame.event.wait()
-        
-        if event.type == pygame.QUIT:
-                # Quit manual control mode and close Pygame window
-                manual_control = False
-                RUNNING = False
-                pygame.quit()
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_w:
-                command = f'move_forward: {abs(int(3))}\n'
-                us_sensor = send_command(rpi_ip, port, command)
-                time.sleep(LOOP_PAUSE_TIME)
-                move_particles(particles, move_distance=3, rotation_change=0)
-            elif event.key == pygame.K_a:
-                command = f'rotate_left: {abs(int(18))}\n'
-                us_sensor = send_command(rpi_ip, port, command)
-                time.sleep(LOOP_PAUSE_TIME)
-                move_particles(particles, move_distance=0, rotation_change=-18)
-            elif event.key == pygame.K_d:
-                command = f'rotate_right: {abs(int(18))}\n'
-                us_sensor = send_command(rpi_ip, port, command)
-                time.sleep(LOOP_PAUSE_TIME)
-                move_particles(particles, move_distance=0, rotation_change=18)
-            elif event.key == pygame.K_s:
-                us_sensor = send_command(rpi_ip, port, "obs_moveBackward")
-                time.sleep(LOOP_PAUSE_TIME)
-                move_particles(particles, move_distance=-0.5, rotation_change=0)
-                
-            elif event.key == pygame.K_t:
-                command = f'move_forward: {abs(int(5))}\n'
-                us_sensor = send_command(rpi_ip, port, command)
-                move_particles(particles, move_distance=5, rotation_change=0)
-            elif event.key == pygame.K_f:
-                command = f'rotate_left: {abs(int(45))}\n'
-                us_sensor = send_command(rpi_ip, port, command)
-                move_particles(particles, move_distance=0, rotation_change=-45)
-            elif event.key == pygame.K_h:
-                command = f'rotate_right: {abs(int(45))}\n'
-                us_sensor = send_command(rpi_ip, port, command)
-                move_particles(particles, move_distance=0, rotation_change=45)
-            
-            elif event.key == pygame.K_l:
-                us_sensor = send_command(rpi_ip, port, "arm_lower")
-            elif event.key == pygame.K_u:
-                us_sensor = send_command(rpi_ip, port, "arm_upper")
-            
-            robot_readings = scan_rplidar()
-            sensor_front = section_scans(robot_readings)[0]  # Check robot sensors #############################
-        
-            pfdistances = []
-            pfangles = []
-            l = 0
-            for scan in robot_readings:     # Grab robot distances and angles to compare with partilces in localization
-                if scan is not None:
-                    pfdistances.append(scan/25.4)
-                    pfangles.append(l*6)
-                l += 1
-
-            pfdistances = pfdistances[0::3]     # Don't need all 60 readings for localization, takes way too long to process
-            pfangles = pfangles[0::3]
-
-            # print("DISTANCES",pfdistances)
-            # print("ANGLES",pfangles)
-            
-            iteration += 1
-        
-            update_particle_weights(particles, pfdistances, pfangles, sigma)  # Calculate particle weights
-            particles = resample_particles(particles)   # Regenerate particles with weight
-            
-            # Redraw the canvas to update the robot's estimated position and particle positions
-            canvas.fill(CONFIG.background_color)  # Clear screen
-            draw_maze()                           # Draw maze
-            draw_particles_on_canvas(particles)   # Draw particles
-            
-            estimated_position = estimate_robot_position(particles)
-            if estimated_position:
-                ex, ey, etheta = estimated_position
-                # Convert to screen coordinates
-                ex_screen = int(ex * CONFIG.ppi + CONFIG.border_pixels)
-                ey_screen = int(ey * CONFIG.ppi + CONFIG.border_pixels)
-                
-                # Desired radius in your units (e.g., inches)
-                radius_inches = 3.69
-                # Convert radius to pixels
-                radius_pixels = int(radius_inches * CONFIG.ppi)
-                
-                # Draw the circle outline with specified width
-                pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), radius_pixels, width=1)
-                
-                # Calculate the endpoint of the line to represent orientation
-                # Convert orientation angle from degrees to radians
-                theta_radians = math.radians(etheta)
-                
-                # Calculate the endpoint coordinates
-                x2 = ex_screen + radius_pixels * math.cos(theta_radians)
-                y2 = ey_screen + radius_pixels * math.sin(theta_radians)  # Subtract because Pygame's Y-axis increases downward
-                
-                # Draw the line from the center to the edge of the circle
-                pygame.draw.line(canvas, (0, 0, 255), (ex_screen, ey_screen), (x2, y2), width=2)  # Width can be adjusted as needed
-                
-                # Update the display
-                pygame.display.flip()
-            else:
-                print("Cannot estimate position.")
-            
-            try:
-                us_sensor = float(us_sensor)
-            except ValueError:
-                # Handle the error
-                # For example, skip this iteration, assign a default value, or log the error
-                print("Invalid ultrasonic sensor reading received.")
-                continue  # Skip to the next iteration or handle as needed
-            
-            # us_sensor = float(us_sensor)
-            # print(us_sensor)
-            # if sensor_back is not None:
-            #     if us_sensor < 8.0 and sensor_back > (8.0+3.5+2):
-            #         print("block might be in front")
-            #         if us_sensor < 4.0:
-            #             print("BLOCK FOUND!!!!!!")
-            #             print("Traveling to drop off zone")
-            
-            
-            us_sensor = send_command(rpi_ip, port, command="obs_moveForward")
-            scan = float(us_sensor)
-            print(scan)
-            # if sensor_front is not None:
-            #     if us_sensor < 8.0 and sensor_front > (8.0+3.5+2):
-            #         print("block might be in front")
-            #         if us_sensor < 5.0:
-            #             print("BLOCK FOUND!!!!!!")
-            #             print("Traveling to drop off zone")
-                        
-            if scan < 7.0 and sensor_front - scan > 2.0:
-                print("Block Might Be Ahead")
-                rescan = float(send_command(rpi_ip, port, command="scan"))
-                lidar_rescan = scan_rplidar()[0]
-
-                if rescan < 4.0 and lidar_rescan - rescan > 2.0:
-                    print("BLOCK!!!!!")
-                
-        # Update Pygame display
-        pygame.display.flip()
-
+ 
 
 ######### MAIN and Parent LOOP ########
+
+############## Constant Definitions Begin ##############
+### Network Setup ###
+# HOST = '127.0.0.1'      # The server's hostname or IP address
+# PORT_TX = 61200         # The port used by the *CLIENT* to receive
+# PORT_RX = 61201         # The port used by the *CLIENT* to send data
+
+# ### Serial Setup ###
+# BAUDRATE = 9600         # Baudrate in bps
+# PORT_SERIAL = 'COM3'    # COM port identification
+# TIMEOUT_SERIAL = 1      # Serial port timeout, in seconds
+
+# ### Packet Framing values ###
+# FRAMESTART = '['
+# FRAMEEND = ']'
+# CMD_DELIMITER = ','
+
+# ### Set whether to use TCP (SimMeR) or serial (Arduino) ###
+# SIMULATE = True
+# TRANSMIT_PAUSE = 0.1 if SIMULATE else 0
+
+# ############### Initialize ##############
+# ### Source to display
+# if SIMULATE:
+#     SOURCE = 'SimMeR'
+# else:
+#     SOURCE = 'serial device ' + PORT_SERIAL
+
+# if not SIMULATE:
+#     try:
+#         SER = serial.Serial(PORT_SERIAL, BAUDRATE, timeout=TIMEOUT_SERIAL)
+#     except serial.SerialException:
+#         print(f'Serial connection was refused.\nEnsure {PORT_SERIAL} is the correct port and nothing else is connected to it.')
 
 ############## Main section for the open loop control algorithm ##############
 RUNNING = True
 LOOP_PAUSE_TIME = 0.1 # seconds
 
-eposition, eorientation, top_50_particles = localization()
+#eposition, eorientation, top_50_particles = localization()
 
 # Actual maze configuration as provided earlier
 walls = [
@@ -1225,10 +1094,10 @@ for row in walls:
 maze2 = [[1 if cell != 0 else 0 for cell in row] for row in expanded_maze]
 
 loading_zones = [
-    (66.0, 8.0),    # Loading bay 1 is at the 5th square, row 1
-    (90.0, 8.0),    # Loading bay 2 is at 7th square, row 1
-    (30.0, 32.0),   # Loading bay 3 is at 3rd square, row 3
-    (90.0, 40.0)    # Loading bay 4 is at 7th square row 4
+    (66.0, 8.0),  # Loading bay 1 is at the 5th square, row 1
+    (90.0, 8.0),   # Loading bay 2 is at 7th square, row 1
+    (30.0, 32.0), # Loading bay 3 is at 3rd square, row 3
+    (90.0, 40.0)  # Loading bay 4 is at 7th square row 4
 ]
 target_loading_zone = 2
 #x_e = 6.0
@@ -1241,9 +1110,5 @@ position_1 =  [(24.0,6.0), (6.0,24.0)]
 position_2 = loading_zones[target_loading_zone]
 
 top_50_particles = reinitialize_particles(eposition, eorientation, num_particles=200, position_variance=1, angle_variance=5)
-eposition, eorientation, top_50_particles  = navigate_to(maze2, position_1, eposition, eorientation, top_50_particles)
-
-
-#final_position = navigate_to(maze2, position_2, eposition, eorientation, top_50_particles)  # Navigate to the drop-off
-
-#print(f"Final Position: {final_position}")
+#load_zone = navigate_to(maze2, position_1, eposition, eorientation, top_50_particles)
+final_position = navigate_to(maze2, position_2, (24.0,6.0), (1,0), top_50_particles)  # Navigate to the drop-off
