@@ -404,7 +404,6 @@ def localization(NUM_PARTICLES=1000):
     
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
-    #CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-0.5', 'r0:-18', 'r0:18']
     threshold = 7.5*25.4
     diag_threshold = 5.3*25.4
     NUM_STEPS = 786
@@ -419,28 +418,7 @@ def localization(NUM_PARTICLES=1000):
     robot_readings = scan_rplidar()
     sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = section_scans(robot_readings)  # Check robot sensors
     print("1 : ", sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl)
-    #sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl = robot_readings
 
-    # Need to change the following:
-    # 1. 0 Deg: sensor_front STAYS
-    # 2. 30 Deg: sensor_right change to sensor_frontr
-    # 3. 90 Deg: sensor_left change to sensor_right
-    # 4. 150 Deg: sensor_back change to sensor_backr
-    # 5. 180 Deg: sensor_frontl change to sensor_back
-    # 6. 210 Deg: sensor_frontr change to sensor_backl
-    # 7. 270 Deg: sensor_left change to sensor_backl
-    # 8. 330 Deg: sensor_backr change to sensor_frontl
-    ####### If we also want to account for the fact that the lidar is rotated 180 degrees, then these values at the angles should be:
-    #------------------------------#
-    #1. 0 Deg = sensor_back
-    #2. 30 Deg = sensor_backl
-    #3. 90 deg = sensor_left
-    #4. 150 Deg = sensor_frontl
-    #5. 180 Deg = sensor_front
-    #6. 210 Deg = sensor_frontr
-    #7. 270 Deg = sensor_right
-    #8. 330 Deg = sensor_backr
-    # -----------------------------#
     try:
         for i in range(NUM_STEPS):
             print("Loop starts")
@@ -639,11 +617,6 @@ def localization(NUM_PARTICLES=1000):
                 print("Cannot estimate position.")
 
             
-
-            # if estimated_position:
-            #     pygame.draw.circle(canvas, (0, 0, 255), (ex_screen, ey_screen), 5)  # Blue circle
-            # pygame.display.flip()  # Update the full display                
-            
             if convergence_condition:
                 print(f"We localized: Normal Coords = [{ex},{ey},{etheta}]")
                 eposition = (ex, ey)
@@ -740,21 +713,6 @@ def localization(NUM_PARTICLES=1000):
                             us_sensor = send_command(rpi_ip, port, "obs_moveBackward")
                             time.sleep(LOOP_PAUSE_TIME)
                             move_particles(particles, move_distance=-1.0, rotation_change=0)
-                        elif event.key == pygame.K_t:
-                            us_sensor = send_command(rpi_ip, port, "obs_moveForward")
-                            us_sensor = send_command(rpi_ip, port, "obs_moveForward")
-                            us_sensor = send_command(rpi_ip, port, "obs_moveForward")
-                            move_particles(particles, move_distance=3.6, rotation_change=0)
-                        elif event.key == pygame.K_f:
-                            us_sensor = send_command(rpi_ip, port, "obs_rotateLeft")
-                            us_sensor = send_command(rpi_ip, port, "obs_rotateLeft")
-                            us_sensor = send_command(rpi_ip, port, "obs_rotateLeft")
-                            move_particles(particles, move_distance=0, rotation_change=-54)
-                        elif event.key == pygame.K_h:
-                            us_sensor = send_command(rpi_ip, port, "obs_rotateRight")
-                            us_sensor = send_command(rpi_ip, port, "obs_rotateRight")
-                            us_sensor = send_command(rpi_ip, port, "obs_rotateRight")
-                            move_particles(particles, move_distance=0, rotation_change=54)
                         elif event.key == pygame.K_p:
                             command = f'rotate_left: {abs(int(360))}\n'
                             send_command(rpi_ip, port, command)

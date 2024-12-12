@@ -561,6 +561,13 @@ def localization(NUM_PARTICLES=1000):
     
     particles = initialize_particles(NUM_PARTICLES)   # Initialize particles
 
+    # Update the display
+    canvas.fill(CONFIG.background_color) # Clear screen
+    draw_maze()                          # Draw maze
+    draw_particles_on_canvas(particles)  # Draw particles
+    pygame.display.flip()
+
+
     CMD_LIST = ['w0:1.2', 'r0:-10', 'r0:10','w0:-1.2', 'r0:-18', 'r0:18', 'w0:2.5']
     threshold = 7.7
     diag_threshold = 7.7
@@ -572,9 +579,6 @@ def localization(NUM_PARTICLES=1000):
     sigma = 15
     j = 0
     manual_control = False
-    
-    
-    
     
     
     try:
@@ -648,29 +652,6 @@ def localization(NUM_PARTICLES=1000):
                 move_particles(particles, move_distance=1.2, rotation_change=0)
 
             time.sleep(LOOP_PAUSE_TIME)
-            
-            # if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-            #     if sensor_left > sensor_right:
-            #         while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-            #             sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
-            #             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-            #                 # Send a turn left command
-            #                 time.sleep(LOOP_PAUSE_TIME)
-            #                 transmit(packetize(CMD_LIST[4]))
-            #                 [responses, time_rx] = receive()
-            #                 # Move particles
-            #                 move_particles(particles, move_distance=0, rotation_change=-18)
-
-            #     elif sensor_right > sensor_left:
-            #         while sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-            #             sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
-            #             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
-            #                 # Send a turn right command
-            #                 time.sleep(LOOP_PAUSE_TIME)
-            #                 transmit(packetize(CMD_LIST[5]))
-            #                 [responses, time_rx] = receive()
-            #                 # Move particles
-            #                 move_particles(particles, move_distance=0, rotation_change=18)
                 
             if sensor_front < threshold or sensor_frontl < diag_threshold or sensor_frontr < diag_threshold:
                 if sensor_frontl > sensor_frontr:
@@ -720,7 +701,7 @@ def localization(NUM_PARTICLES=1000):
             # Check robot sensors
             sensor_front, sensor_right, sensor_left, sensor_back, sensor_frontl, sensor_frontr, sensor_backl, sensor_backr = check_sensors()    # Check robot sensors
             robot_readings = [sensor_front, sensor_frontr, sensor_right, sensor_backr, sensor_back, sensor_backl, sensor_left, sensor_frontl]   # Robot sensors list
-            
+            #print(robot_readings)
             
             if iteration == 0:
                 update_particle_weights(particles, robot_readings, sigma)  # Calculate particle weights
@@ -737,10 +718,10 @@ def localization(NUM_PARTICLES=1000):
                     RESAMPLE_INTERVAL = 2
                 elif j == 2:
                     sigma = 5
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500]
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:250]
                 elif j == 1:
                     sigma = 8
-                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:1000]
+                    particles = sorted(particles, key=lambda p: p.weight, reverse=True)[:500]
                     RESAMPLE_INTERVAL = 5
                     print(i)
 
@@ -895,6 +876,7 @@ def localization(NUM_PARTICLES=1000):
                         canvas.fill(CONFIG.background_color)  # Clear screen
                         draw_maze()                           # Draw maze
                         draw_particles_on_canvas(particles)   # Draw particles
+                        pygame.display.flip()
 
                         estimated_position = estimate_robot_position(particles)
                         if estimated_position:

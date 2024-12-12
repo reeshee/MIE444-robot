@@ -25,7 +25,7 @@ robot_position = np.array([89.78, 27.66])  # Starting position in inches
 robot_theta = 0  # Facing 0 degrees
 
 # Initialize particles within the maze bounds
-num_particles = 300
+num_particles = 1000
 particles = initialize_particles(num_particles)
 
 # Movement parameters for robot and particles
